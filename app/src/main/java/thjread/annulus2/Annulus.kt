@@ -20,6 +20,7 @@ import android.support.wearable.watchface.CanvasWatchFaceService
 import android.support.wearable.watchface.WatchFaceService
 import android.support.wearable.watchface.WatchFaceStyle
 import android.view.SurfaceHolder
+import android.view.WindowInsets
 import android.widget.Toast
 
 import java.lang.ref.WeakReference
@@ -85,10 +86,14 @@ class Annulus : CanvasWatchFaceService() {
         private var mMuteMode: Boolean = false
         private var mCenterX: Float = 0F
         private var mCenterY: Float = 0F
+        private var mChinSize: Float = 0F
 
         private var mSecondHandLength: Float = 0F
         private var sMinuteHandLength: Float = 0F
         private var sHourHandLength: Float = 0F
+
+        private var mMinorTickLength: Float = 0.05F
+        private var mMajorTickLength: Float = 0.15F
 
         /* Colors for all hands (hour, minute, seconds, ticks) based on photo loaded. */
         private var mWatchHandColor: Int = 0
@@ -284,6 +289,14 @@ class Annulus : CanvasWatchFaceService() {
             sHourHandLength = (mCenterX * 0.5).toFloat()
         }
 
+        override fun onApplyWindowInsets(insets: WindowInsets?) {
+            super.onApplyWindowInsets(insets)
+
+            insets?.let{
+                mChinSize = it.systemWindowInsetBottom.toFloat()
+            }
+        }
+
         /**
          * Captures tap event (and tap type). The [WatchFaceService.TAP_TYPE_TAP] case can be
          * used for implementing specific logic to handle the gesture.
@@ -321,14 +334,23 @@ class Annulus : CanvasWatchFaceService() {
              * cases where you want to allow users to select their own photos, this dynamically
              * creates them on top of the photo.
              */
-            val innerTickRadius = mCenterX - 10
-            val outerTickRadius = mCenterX
-            for (tickIndex in 0..11) {
-                val tickRot = (tickIndex.toDouble() * Math.PI * 2.0 / 12).toFloat()
-                val innerX = Math.sin(tickRot.toDouble()).toFloat() * innerTickRadius
-                val innerY = (-Math.cos(tickRot.toDouble())).toFloat() * innerTickRadius
-                val outerX = Math.sin(tickRot.toDouble()).toFloat() * outerTickRadius
-                val outerY = (-Math.cos(tickRot.toDouble())).toFloat() * outerTickRadius
+
+            for (tickIndex in 0..59) {
+                var outerTickRadius = mCenterX
+                var tickLength = when (tickIndex % 5) {
+                    0 -> mMajorTickLength
+                    else -> mMinorTickLength
+                } * mCenterX
+                val tickRot = (tickIndex.toDouble() * Math.PI * 2.0 / 60)
+                if (-Math.cos(tickRot)*outerTickRadius > mCenterY-mChinSize) {
+                    outerTickRadius = (mCenterY - mChinSize) / (-Math.cos(tickRot)).toFloat()
+                    tickLength *= ((mCenterY - mChinSize) / mCenterY) / (-Math.cos(tickRot)).toFloat()
+                }
+                
+                val innerX = Math.sin(tickRot).toFloat() * (outerTickRadius-tickLength)
+                val innerY = (-Math.cos(tickRot)).toFloat() * (outerTickRadius-tickLength)
+                val outerX = Math.sin(tickRot).toFloat() * outerTickRadius
+                val outerY = (-Math.cos(tickRot)).toFloat() * outerTickRadius
                 canvas.drawLine(
                     mCenterX + innerX, mCenterY + innerY,
                     mCenterX + outerX, mCenterY + outerY, mTickAndCirclePaint
