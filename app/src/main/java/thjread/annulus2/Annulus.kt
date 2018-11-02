@@ -95,14 +95,12 @@ class Annulus : CanvasWatchFaceService() {
         private var mWatchHandHighlightColor: Int = 0
         private var mWatchHandShadowColor: Int = 0
 
+        private var mBackgroundColor: Int = Color.BLACK
+
         private lateinit var mHourPaint: Paint
         private lateinit var mMinutePaint: Paint
         private lateinit var mSecondPaint: Paint
         private lateinit var mTickAndCirclePaint: Paint
-
-        private lateinit var mBackgroundPaint: Paint
-        private lateinit var mBackgroundBitmap: Bitmap
-        private lateinit var mGrayBackgroundBitmap: Bitmap
 
         private var mAmbient: Boolean = false
         private var mLowBitAmbient: Boolean = false
@@ -129,25 +127,7 @@ class Annulus : CanvasWatchFaceService() {
 
             mCalendar = Calendar.getInstance()
 
-            initializeBackground()
             initializeWatchFace()
-        }
-
-        private fun initializeBackground() {
-            mBackgroundPaint = Paint().apply {
-                color = Color.BLACK
-            }
-            mBackgroundBitmap = BitmapFactory.decodeResource(resources, R.drawable.bg)
-
-            /* Extracts colors from background image to improve watchface style. */
-            Palette.from(mBackgroundBitmap).generate {
-                it?.let {
-                    mWatchHandHighlightColor = it.getVibrantColor(Color.RED)
-                    mWatchHandColor = it.getLightVibrantColor(Color.WHITE)
-                    mWatchHandShadowColor = it.getDarkMutedColor(Color.BLACK)
-                    updateWatchHandStyle()
-                }
-            }
         }
 
         private fun initializeWatchFace() {
@@ -302,45 +282,6 @@ class Annulus : CanvasWatchFaceService() {
             mSecondHandLength = (mCenterX * 0.875).toFloat()
             sMinuteHandLength = (mCenterX * 0.75).toFloat()
             sHourHandLength = (mCenterX * 0.5).toFloat()
-
-
-            /* Scale loaded background image (more efficient) if surface dimensions change. */
-            val scale = width.toFloat() / mBackgroundBitmap.width.toFloat()
-
-            mBackgroundBitmap = Bitmap.createScaledBitmap(
-                mBackgroundBitmap,
-                (mBackgroundBitmap.width * scale).toInt(),
-                (mBackgroundBitmap.height * scale).toInt(), true
-            )
-
-            /*
-             * Create a gray version of the image only if it will look nice on the device in
-             * ambient mode. That means we don't want devices that support burn-in
-             * protection (slight movements in pixels, not great for images going all the way to
-             * edges) and low ambient mode (degrades image quality).
-             *
-             * Also, if your watch face will know about all images ahead of time (users aren't
-             * selecting their own photos for the watch face), it will be more
-             * efficient to create a black/white version (png, etc.) and load that when you need it.
-             */
-            if (!mBurnInProtection && !mLowBitAmbient) {
-                initGrayBackgroundBitmap()
-            }
-        }
-
-        private fun initGrayBackgroundBitmap() {
-            mGrayBackgroundBitmap = Bitmap.createBitmap(
-                mBackgroundBitmap.width,
-                mBackgroundBitmap.height,
-                Bitmap.Config.ARGB_8888
-            )
-            val canvas = Canvas(mGrayBackgroundBitmap)
-            val grayPaint = Paint()
-            val colorMatrix = ColorMatrix()
-            colorMatrix.setSaturation(0f)
-            val filter = ColorMatrixColorFilter(colorMatrix)
-            grayPaint.colorFilter = filter
-            canvas.drawBitmap(mBackgroundBitmap, 0f, 0f, grayPaint)
         }
 
         /**
@@ -369,19 +310,8 @@ class Annulus : CanvasWatchFaceService() {
             val now = System.currentTimeMillis()
             mCalendar.timeInMillis = now
 
-            drawBackground(canvas)
+            canvas.drawRGB(Color.red(mBackgroundColor), Color.green(mBackgroundColor), Color.blue(mBackgroundColor))
             drawWatchFace(canvas)
-        }
-
-        private fun drawBackground(canvas: Canvas) {
-
-            if (mAmbient && (mLowBitAmbient || mBurnInProtection)) {
-                canvas.drawColor(Color.BLACK)
-            } else if (mAmbient) {
-                canvas.drawBitmap(mGrayBackgroundBitmap, 0f, 0f, mBackgroundPaint)
-            } else {
-                canvas.drawBitmap(mBackgroundBitmap, 0f, 0f, mBackgroundPaint)
-            }
         }
 
         private fun drawWatchFace(canvas: Canvas) {
