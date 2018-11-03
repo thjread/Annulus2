@@ -4,18 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
-import android.graphics.Rect
+import android.graphics.*
 import android.os.Bundle
 import android.os.Handler
 import android.os.Message
-import android.support.v7.graphics.Palette
 import android.support.wearable.watchface.CanvasWatchFaceService
 import android.support.wearable.watchface.WatchFaceService
 import android.support.wearable.watchface.WatchFaceStyle
@@ -38,13 +30,30 @@ private const val INTERACTIVE_UPDATE_RATE_MS = 1000
  */
 private const val MSG_UPDATE_TIME = 0
 
-private const val HOUR_STROKE_WIDTH = 5f
-private const val MINUTE_STROKE_WIDTH = 3f
-private const val SECOND_TICK_STROKE_WIDTH = 2f
+private const val MAJOR_TICK_THICKNESS = 0.02f
+private const val MINOR_TICK_THICKNESS = 0.01f
+private const val OUTER_TICK_RADIUS = 0.9375f
+private const val MAJOR_TICK_LENGTH = 0.1875f
+private const val MINOR_TICK_LENGTH = 0.0625f
 
-private const val CENTER_GAP_AND_CIRCLE_RADIUS = 4f
+private const val HOUR_LENGTH = 0.5f
+private const val HOUR_THICKNESS = 0.05f
+private const val HOUR_TIP_THICKNESS = 0.04f
+private const val HOUR_TIP_LENGTH = 0.04f
 
-private const val SHADOW_RADIUS = 6f
+private const val MINUTE_LENGTH = 0.75f
+private const val MINUTE_THICKNESS = 0.04f
+private const val MINUTE_TIP_THICKNESS = 0.032f
+private const val MINUTE_TIP_LENGTH = 0.04f
+
+private const val SECOND_LENGTH = 0.875f
+private const val SECOND_THICKNESS = 0.02f
+
+private const val CENTER_CIRCLE_RADIUS = 0.04f
+
+private const val WATCH_HAND_COLOR = Color.WHITE
+private const val WATCH_HAND_HIGHLIGHT_COLOR = Color.WHITE // TODO: Do we actually want a highlight color?
+private const val BACKGROUND_COLOR = Color.BLACK
 
 /**
  * Analog watch face with a ticking second hand. In ambient mode, the second hand isn't
@@ -86,26 +95,14 @@ class Annulus : CanvasWatchFaceService() {
         private var mMuteMode: Boolean = false
         private var mCenterX: Float = 0F
         private var mCenterY: Float = 0F
+        private var mRadius: Float = 0F
         private var mChinSize: Float = 0F
-
-        private var mSecondHandLength: Float = 0F
-        private var sMinuteHandLength: Float = 0F
-        private var sHourHandLength: Float = 0F
-
-        private var mMinorTickLength: Float = 0.05F
-        private var mMajorTickLength: Float = 0.15F
-
-        /* Colors for all hands (hour, minute, seconds, ticks) based on photo loaded. */
-        private var mWatchHandColor: Int = 0
-        private var mWatchHandHighlightColor: Int = 0
-        private var mWatchHandShadowColor: Int = 0
-
-        private var mBackgroundColor: Int = Color.BLACK
 
         private lateinit var mHourPaint: Paint
         private lateinit var mMinutePaint: Paint
         private lateinit var mSecondPaint: Paint
-        private lateinit var mTickAndCirclePaint: Paint
+        private lateinit var mTickPaint: Paint
+        private lateinit var mCirclePaint: Paint
 
         private var mAmbient: Boolean = false
         private var mLowBitAmbient: Boolean = false
@@ -136,49 +133,62 @@ class Annulus : CanvasWatchFaceService() {
         }
 
         private fun initializeWatchFace() {
-            /* Set defaults for colors */
-            mWatchHandColor = Color.WHITE
-            mWatchHandHighlightColor = Color.RED
-            mWatchHandShadowColor = Color.BLACK
-
             mHourPaint = Paint().apply {
-                color = mWatchHandColor
-                strokeWidth = HOUR_STROKE_WIDTH
+                strokeWidth = 0F
                 isAntiAlias = true
-                strokeCap = Paint.Cap.ROUND
-                setShadowLayer(
-                    SHADOW_RADIUS, 0f, 0f, mWatchHandShadowColor
-                )
+                style = Paint.Style.FILL
             }
 
             mMinutePaint = Paint().apply {
-                color = mWatchHandColor
-                strokeWidth = MINUTE_STROKE_WIDTH
+                strokeWidth = 0F
                 isAntiAlias = true
-                strokeCap = Paint.Cap.ROUND
-                setShadowLayer(
-                    SHADOW_RADIUS, 0f, 0f, mWatchHandShadowColor
-                )
+                style = Paint.Style.FILL
             }
 
             mSecondPaint = Paint().apply {
-                color = mWatchHandHighlightColor
-                strokeWidth = SECOND_TICK_STROKE_WIDTH
+                strokeWidth = SECOND_THICKNESS
                 isAntiAlias = true
                 strokeCap = Paint.Cap.ROUND
-                setShadowLayer(
-                    SHADOW_RADIUS, 0f, 0f, mWatchHandShadowColor
-                )
+                style = Paint.Style.STROKE
             }
 
-            mTickAndCirclePaint = Paint().apply {
-                color = mWatchHandColor
-                strokeWidth = SECOND_TICK_STROKE_WIDTH
+            mTickPaint = Paint().apply {
                 isAntiAlias = true
+                strokeCap = Paint.Cap.ROUND
                 style = Paint.Style.STROKE
-                setShadowLayer(
-                    SHADOW_RADIUS, 0f, 0f, mWatchHandShadowColor
-                )
+            }
+
+            mCirclePaint = Paint().apply {
+                strokeWidth = 0f
+                isAntiAlias = true
+                style = Paint.Style.FILL
+            }
+
+            /* Set colors */
+            updateWatchHandStyle()
+        }
+
+        private fun updateWatchHandStyle() {
+            if (mAmbient) {
+                mHourPaint.color = Color.WHITE
+                mMinutePaint.color = Color.WHITE
+                mSecondPaint.color = Color.WHITE
+                mTickPaint.color = Color.WHITE
+                mCirclePaint.color = Color.WHITE
+
+                if (mLowBitAmbient) {
+                    mHourPaint.isAntiAlias = false
+                    mMinutePaint.isAntiAlias = false
+                    mSecondPaint.isAntiAlias = false
+                    mTickPaint.isAntiAlias = false
+                    mCirclePaint.isAntiAlias = false
+                }
+            } else {
+                mHourPaint.color = WATCH_HAND_COLOR
+                mMinutePaint.color = WATCH_HAND_COLOR
+                mSecondPaint.color = WATCH_HAND_HIGHLIGHT_COLOR
+                mTickPaint.color = WATCH_HAND_COLOR
+                mCirclePaint.color = WATCH_HAND_HIGHLIGHT_COLOR
             }
         }
 
@@ -213,49 +223,6 @@ class Annulus : CanvasWatchFaceService() {
             updateTimer()
         }
 
-        private fun updateWatchHandStyle() {
-            if (mAmbient) {
-                mHourPaint.color = Color.WHITE
-                mMinutePaint.color = Color.WHITE
-                mSecondPaint.color = Color.WHITE
-                mTickAndCirclePaint.color = Color.WHITE
-
-                mHourPaint.isAntiAlias = false
-                mMinutePaint.isAntiAlias = false
-                mSecondPaint.isAntiAlias = false
-                mTickAndCirclePaint.isAntiAlias = false
-
-                mHourPaint.clearShadowLayer()
-                mMinutePaint.clearShadowLayer()
-                mSecondPaint.clearShadowLayer()
-                mTickAndCirclePaint.clearShadowLayer()
-
-            } else {
-                mHourPaint.color = mWatchHandColor
-                mMinutePaint.color = mWatchHandColor
-                mSecondPaint.color = mWatchHandHighlightColor
-                mTickAndCirclePaint.color = mWatchHandColor
-
-                mHourPaint.isAntiAlias = true
-                mMinutePaint.isAntiAlias = true
-                mSecondPaint.isAntiAlias = true
-                mTickAndCirclePaint.isAntiAlias = true
-
-                mHourPaint.setShadowLayer(
-                    SHADOW_RADIUS, 0f, 0f, mWatchHandShadowColor
-                )
-                mMinutePaint.setShadowLayer(
-                    SHADOW_RADIUS, 0f, 0f, mWatchHandShadowColor
-                )
-                mSecondPaint.setShadowLayer(
-                    SHADOW_RADIUS, 0f, 0f, mWatchHandShadowColor
-                )
-                mTickAndCirclePaint.setShadowLayer(
-                    SHADOW_RADIUS, 0f, 0f, mWatchHandShadowColor
-                )
-            }
-        }
-
         override fun onInterruptionFilterChanged(interruptionFilter: Int) {
             super.onInterruptionFilterChanged(interruptionFilter)
             val inMuteMode = interruptionFilter == WatchFaceService.INTERRUPTION_FILTER_NONE
@@ -280,13 +247,7 @@ class Annulus : CanvasWatchFaceService() {
              */
             mCenterX = width / 2f
             mCenterY = height / 2f
-
-            /*
-             * Calculate lengths of different hands based on watch screen size.
-             */
-            mSecondHandLength = (mCenterX * 0.875).toFloat()
-            sMinuteHandLength = (mCenterX * 0.75).toFloat()
-            sHourHandLength = (mCenterX * 0.5).toFloat()
+            mRadius = Math.min(mCenterX, mCenterY)
         }
 
         override fun onApplyWindowInsets(insets: WindowInsets?) {
@@ -323,37 +284,46 @@ class Annulus : CanvasWatchFaceService() {
             val now = System.currentTimeMillis()
             mCalendar.timeInMillis = now
 
-            canvas.drawRGB(Color.red(mBackgroundColor), Color.green(mBackgroundColor), Color.blue(mBackgroundColor))
+            canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
             drawWatchFace(canvas)
         }
 
         private fun drawWatchFace(canvas: Canvas) {
 
             /*
-             * Draw ticks. Usually you will want to bake this directly into the photo, but in
-             * cases where you want to allow users to select their own photos, this dynamically
-             * creates them on top of the photo.
+             * Translate and scale canvas so that centre is 0, 0 and radius is 1
              */
+            canvas.save()
+            canvas.translate(mCenterX, mCenterY)
+            canvas.scale(mRadius, mRadius, 0f, 0f)
 
+            /*
+             * Draw ticks.
+             */
             for (tickIndex in 0..59) {
-                var outerTickRadius = mCenterX
-                var tickLength = when (tickIndex % 5) {
-                    0 -> mMajorTickLength
-                    else -> mMinorTickLength
-                } * mCenterX
-                val tickRot = (tickIndex.toDouble() * Math.PI * 2.0 / 60)
-                if (-Math.cos(tickRot)*outerTickRadius > mCenterY-mChinSize) {
-                    outerTickRadius = (mCenterY - mChinSize) / (-Math.cos(tickRot)).toFloat()
-                    tickLength *= ((mCenterY - mChinSize) / mCenterY) / (-Math.cos(tickRot)).toFloat()
+                var outerTickRadius = OUTER_TICK_RADIUS
+                var tickLength: Float
+                if (tickIndex % 5 == 0) {
+                    tickLength = MAJOR_TICK_LENGTH
+                    mTickPaint.strokeWidth = MAJOR_TICK_THICKNESS
+                } else {
+                    tickLength = MINOR_TICK_LENGTH
+                    mTickPaint.strokeWidth = MINOR_TICK_THICKNESS
                 }
-                
+                val tickRot = (tickIndex.toDouble() * Math.PI * 2.0 / 60)
+                if (-Math.cos(tickRot)*OUTER_TICK_RADIUS > (mCenterY-mChinSize)/mRadius) {
+                    val scale = (1f - mChinSize/mRadius) / (-Math.cos(tickRot)).toFloat()
+                    outerTickRadius *= scale
+                    tickLength *= scale
+                }
+
                 val innerX = Math.sin(tickRot).toFloat() * (outerTickRadius-tickLength)
                 val innerY = (-Math.cos(tickRot)).toFloat() * (outerTickRadius-tickLength)
                 val outerX = Math.sin(tickRot).toFloat() * outerTickRadius
                 val outerY = (-Math.cos(tickRot)).toFloat() * outerTickRadius
                 canvas.drawLine(
-                    mCenterX + innerX, mCenterY + innerY,
-                    mCenterX + outerX, mCenterY + outerY, mTickAndCirclePaint
+                    innerX, innerY,
+                    outerX, outerY, mTickPaint
                 )
             }
 
@@ -361,58 +331,74 @@ class Annulus : CanvasWatchFaceService() {
              * These calculations reflect the rotation in degrees per unit of time, e.g.,
              * 360 / 60 = 6 and 360 / 12 = 30.
              */
-            val seconds =
-                mCalendar.get(Calendar.SECOND) + mCalendar.get(Calendar.MILLISECOND) / 1000f
+            val seconds = mCalendar.get(Calendar.SECOND)
             val secondsRotation = seconds * 6f
 
-            val minutesRotation = mCalendar.get(Calendar.MINUTE) * 6f
+            val minutes = mCalendar.get(Calendar.MINUTE)
+            val minuteHandOffset = seconds / 10f
+            val minutesRotation = (minutes * 6f).let {
+                if (mAmbient) it else it + minuteHandOffset
+            }
 
-            val hourHandOffset = mCalendar.get(Calendar.MINUTE) / 2f
-            val hoursRotation = mCalendar.get(Calendar.HOUR) * 30 + hourHandOffset
+            val hours = mCalendar.get(Calendar.HOUR)
+            val hourHandOffset = minutes / 2f
+            val hoursRotation = hours * 30f + hourHandOffset
 
             /*
-             * Save the canvas state before we can begin to rotate it.
+             * Draw a tapering watch hand with a pointed tip
              */
+            fun handPath(
+                thickness: Float, tipThickness: Float,
+                length: Float, tipLength: Float
+            ): Path {
+                val p = Path()
+                p.moveTo(0f, 0f)
+                p.lineTo(-thickness/2f, 0f)
+                p.lineTo(-tipThickness/2f, -(length - tipLength))
+                p.lineTo(0f, -length)
+                p.lineTo(tipThickness/2f, -(length - tipLength))
+                p.lineTo(thickness/2f, 0f)
+                p.close()
+                return p
+            }
+
             canvas.save()
+            canvas.rotate(hoursRotation, 0f, 0f)
+            canvas.drawPath(
+                handPath(
+                    HOUR_THICKNESS, HOUR_TIP_THICKNESS, HOUR_LENGTH,
+                    HOUR_TIP_LENGTH),
+                mHourPaint)
+            canvas.restore()
 
-            canvas.rotate(hoursRotation, mCenterX, mCenterY)
-            canvas.drawLine(
-                mCenterX,
-                mCenterY - CENTER_GAP_AND_CIRCLE_RADIUS,
-                mCenterX,
-                mCenterY - sHourHandLength,
-                mHourPaint
-            )
-
-            canvas.rotate(minutesRotation - hoursRotation, mCenterX, mCenterY)
-            canvas.drawLine(
-                mCenterX,
-                mCenterY - CENTER_GAP_AND_CIRCLE_RADIUS,
-                mCenterX,
-                mCenterY - sMinuteHandLength,
-                mMinutePaint
-            )
+            canvas.save()
+            canvas.rotate(minutesRotation, 0f, 0f)
+            canvas.drawPath(
+                handPath(
+                    MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, MINUTE_LENGTH,
+                    MINUTE_TIP_LENGTH),
+                mMinutePaint)
+            canvas.restore()
 
             /*
              * Ensure the "seconds" hand is drawn only when we are in interactive mode.
              * Otherwise, we only update the watch face once a minute.
              */
             if (!mAmbient) {
-                canvas.rotate(secondsRotation - minutesRotation, mCenterX, mCenterY)
+                canvas.save()
+                canvas.rotate(secondsRotation, 0f, 0f)
                 canvas.drawLine(
-                    mCenterX,
-                    mCenterY - CENTER_GAP_AND_CIRCLE_RADIUS,
-                    mCenterX,
-                    mCenterY - mSecondHandLength,
+                    0f, 0f,
+                    0f, -SECOND_LENGTH,
                     mSecondPaint
                 )
-
+                canvas.restore()
             }
+
             canvas.drawCircle(
-                mCenterX,
-                mCenterY,
-                CENTER_GAP_AND_CIRCLE_RADIUS,
-                mTickAndCirclePaint
+                0f, 0f,
+                CENTER_CIRCLE_RADIUS,
+                mCirclePaint
             )
 
             /* Restore the canvas' original orientation. */
