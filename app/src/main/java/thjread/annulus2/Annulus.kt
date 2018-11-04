@@ -8,6 +8,7 @@ import android.graphics.*
 import android.os.Bundle
 import android.os.Handler
 import android.os.Message
+import android.provider.CalendarContract
 import android.support.wearable.watchface.CanvasWatchFaceService
 import android.support.wearable.watchface.WatchFaceService
 import android.support.wearable.watchface.WatchFaceStyle
@@ -19,9 +20,6 @@ import android.widget.Toast
 import java.lang.ref.WeakReference
 import java.util.Calendar
 import java.util.TimeZone
-
-import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.*
 
 /**
  * Updates rate in milliseconds for interactive mode. We update once a second to advance the
@@ -59,13 +57,6 @@ private const val WATCH_HAND_COLOR = Color.WHITE
 private const val WATCH_HAND_HIGHLIGHT_COLOR = Color.WHITE // TODO: Do we actually want a highlight color?
 private const val BACKGROUND_COLOR = Color.BLACK
 
-/* TODO get calendar and weather data
- * Each tick check if calendar / weather data too stale
- * If so, send a message to an actor (one for calendar, one for weather) running in the UI thread (with capacity 1)
- * Actor runs syncing code in another thread, then updates the UI thread calendar/weather data
- * See https://github.com/kotlin/kotlinx.coroutines/blob/master/ui/coroutines-guide-ui.md
- */
-
 /**
  * Analog watch face with a ticking second hand. In ambient mode, the second hand isn't
  * shown. On devices with low-bit ambient mode, the hands are drawn without anti-aliasing in ambient
@@ -80,6 +71,7 @@ private const val BACKGROUND_COLOR = Color.BLACK
  * https://codelabs.developers.google.com/codelabs/watchface/index.html#0
  */
 class Annulus : CanvasWatchFaceService() {
+
     override fun onCreateEngine(): Engine {
         return Engine()
     }
@@ -98,14 +90,6 @@ class Annulus : CanvasWatchFaceService() {
     }
 
     inner class Engine : CanvasWatchFaceService.Engine() {
-
-        inner class CalendarData (val data: Int) {
-            // TODO implement this
-        }
-
-        private lateinit var mCalendarActor: SendChannel<Unit>
-        private var mCalendarData: CalendarData? = null
-
         private lateinit var mCalendar: Calendar
 
         private var mRegisteredTimeZoneReceiver = false
@@ -135,44 +119,7 @@ class Annulus : CanvasWatchFaceService() {
             }
         }
 
-
-        /**
-         * Fetches latest calendar data, in a background thread to
-         * avoid blocking the main (UI) thread.
-         */
-        private suspend fun fetchCalendarData(): CalendarData = withContext(Dispatchers.Default) {
-            // TODO implement this
-            Thread.sleep(100)
-            Log.d("ANNULUS", "fetched calendar data")
-            CalendarData(10)
-        }
-
-        /**
-         * Weather and calendar data are each updated from an actor that
-         * runs on the main (UI) thread, to prevent updating a source
-         * multiple times simultaneously, and to prevent data races.
-         */
-        private fun initializeDataUpdateActors() {
-            /*
-             * Dispatchers.Main runs the actor in the main thread.
-             * capacity=0 creates a RendezvousChannel with no buffer
-             * so actor.offer(Unit) will cause an update if the actor is idle,
-             * and have no effect if an update is already in progress
-             */
-            mCalendarActor = GlobalScope.actor(Dispatchers.Main, capacity=0) {
-                for (event in channel) {
-                    mCalendarData = fetchCalendarData()
-                }
-            }
-        }
-
-        /**
-         * Asks the calendar actor to update the calendar data.
-         * Has no effect if an update is already in progress.
-         */
-        private fun updateCalendarData() {
-            mCalendarActor.offer(Unit)
-        }
+        private val mCalendarDataSource: CalendarDataSource = CalendarDataSource()
 
         override fun onCreate(holder: SurfaceHolder) {
             super.onCreate(holder)
@@ -186,7 +133,6 @@ class Annulus : CanvasWatchFaceService() {
             mCalendar = Calendar.getInstance()
 
             initializeWatchFace()
-            initializeDataUpdateActors()
         }
 
         private fun initializeWatchFace() {
@@ -251,7 +197,6 @@ class Annulus : CanvasWatchFaceService() {
 
         override fun onDestroy() {
             mUpdateTimeHandler.removeMessages(MSG_UPDATE_TIME)
-            mCalendarActor.close()
             super.onDestroy()
         }
 
@@ -330,15 +275,14 @@ class Annulus : CanvasWatchFaceService() {
                 }
                 WatchFaceService.TAP_TYPE_TAP -> {
                     // The user has completed the tap gesture.
-                    updateCalendarData()
+                    mCalendarDataSource.updateCalendarData()
                 }
             }
             invalidate()
         }
 
-
         override fun onDraw(canvas: Canvas, bounds: Rect) {
-            updateCalendarData()
+            mCalendarDataSource.updateCalendarData()// TODO don't update every tick
 
             val now = System.currentTimeMillis()
             mCalendar.timeInMillis = now
