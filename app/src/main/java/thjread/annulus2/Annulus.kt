@@ -1,14 +1,20 @@
 package thjread.annulus2
 
+import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.*
 import android.os.Bundle
 import android.os.Handler
 import android.os.Message
+import android.os.ResultReceiver
 import android.provider.CalendarContract
+import android.support.v4.app.ActivityCompat
+import android.support.v4.app.ActivityCompat.startActivityForResult
+import android.support.v4.content.ContextCompat
 import android.support.wearable.watchface.CanvasWatchFaceService
 import android.support.wearable.watchface.WatchFaceService
 import android.support.wearable.watchface.WatchFaceStyle
@@ -20,6 +26,7 @@ import android.widget.Toast
 import java.lang.ref.WeakReference
 import java.util.Calendar
 import java.util.TimeZone
+import java.util.jar.Manifest
 
 /**
  * Updates rate in milliseconds for interactive mode. We update once a second to advance the
@@ -57,6 +64,55 @@ private const val WATCH_HAND_COLOR = Color.WHITE
 private const val WATCH_HAND_HIGHLIGHT_COLOR = Color.WHITE // TODO: Do we actually want a highlight color?
 private const val BACKGROUND_COLOR = Color.BLACK
 
+private const val PERMISSIONS_CODE = 0
+private const val CALENDAR_PERMISSION_GRANTED = 0
+private const val KEY_RECEIVER = "KEY_RECEIVER"
+
+/**
+ * Need an Activity to request permissions. Communicates back to Service using a ResultReceiver passed in the Intent.
+ */
+class PermissionActivity : Activity() {// TODO better logging messages
+    var mCalendarPermissionGranted = false
+
+    override fun onStart() {
+        super.onStart()
+
+        ActivityCompat.requestPermissions(this,
+            arrayOf(android.Manifest.permission.READ_CALENDAR), PERMISSIONS_CODE)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode == PERMISSIONS_CODE) {
+            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                mCalendarPermissionGranted = true
+                Log.d("Annulus", "Activity received calendar permission")
+            } else {
+                Log.d("Annulus", "Activity failed to receive calendar permission")
+            }
+            finish()
+        }
+    }
+
+    override fun finish() {
+        val receiver: ResultReceiver = getIntent().getParcelableExtra(KEY_RECEIVER)
+
+        if (mCalendarPermissionGranted) {
+            receiver.send(CALENDAR_PERMISSION_GRANTED, null)
+            Log.d("Annulus", "Activity sending that calendar permission is granted")
+        } else {
+            Log.d("Annulus", "Activity finishing without calendar permission")
+        }
+
+        super.finish()
+    }
+}
+
 /**
  * Analog watch face with a ticking second hand. In ambient mode, the second hand isn't
  * shown. On devices with low-bit ambient mode, the hands are drawn without anti-aliasing in ambient
@@ -71,6 +127,20 @@ private const val BACKGROUND_COLOR = Color.BLACK
  * https://codelabs.developers.google.com/codelabs/watchface/index.html#0
  */
 class Annulus : CanvasWatchFaceService() {
+
+    private var mCalendarPermissionGranted: Boolean = false
+
+    inner class MessageReceiver : ResultReceiver(null) {
+        override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
+            super.onReceiveResult(resultCode, resultData)
+            if (resultCode == CALENDAR_PERMISSION_GRANTED) {
+                Log.d("Annulus", "Result receiver received that calendar permission is granted")
+                mCalendarPermissionGranted = true
+            } else {
+                Log.d("Annulus", "Result receiver received different code")
+            }
+        }
+    }
 
     override fun onCreateEngine(): Engine {
         return Engine()
@@ -119,10 +189,23 @@ class Annulus : CanvasWatchFaceService() {
             }
         }
 
-        private val mCalendarDataSource: CalendarDataSource = CalendarDataSource()
+        private lateinit var mCalendarDataSource: CalendarDataSource
 
         override fun onCreate(holder: SurfaceHolder) {
             super.onCreate(holder)
+
+            /*
+             * Ask for READ_CALENDAR permission if we don't already have it
+             */
+            if (ContextCompat.checkSelfPermission(applicationContext, android.Manifest.permission.READ_CALENDAR)
+                == PackageManager.PERMISSION_GRANTED) {
+                mCalendarPermissionGranted = true
+            } else {
+                val permissionIntent = Intent(applicationContext, PermissionActivity::class.java)
+                permissionIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                permissionIntent.putExtra(KEY_RECEIVER, MessageReceiver())
+                startActivity(permissionIntent)
+            }
 
             setWatchFaceStyle(
                 WatchFaceStyle.Builder(this@Annulus)
@@ -132,6 +215,7 @@ class Annulus : CanvasWatchFaceService() {
 
             mCalendar = Calendar.getInstance()
 
+            mCalendarDataSource = CalendarDataSource(contentResolver)
             initializeWatchFace()
         }
 
@@ -275,14 +359,19 @@ class Annulus : CanvasWatchFaceService() {
                 }
                 WatchFaceService.TAP_TYPE_TAP -> {
                     // The user has completed the tap gesture.
-                    mCalendarDataSource.updateCalendarData()
+                    if (mCalendarPermissionGranted) {// TODO don't repeat this check, move into a function
+                        mCalendarDataSource.updateCalendarData()
+                    }
                 }
             }
             invalidate()
         }
 
         override fun onDraw(canvas: Canvas, bounds: Rect) {
-            mCalendarDataSource.updateCalendarData()// TODO don't update every tick
+            if (mCalendarPermissionGranted) {
+                mCalendarDataSource.updateCalendarData()// TODO don't update every tick
+                Log.d("Annulus", mCalendarDataSource.mCalendarData.toString())
+            }
 
             val now = System.currentTimeMillis()
             mCalendar.timeInMillis = now
@@ -339,8 +428,8 @@ class Annulus : CanvasWatchFaceService() {
 
             val minutes = mCalendar.get(Calendar.MINUTE)
             val minuteHandOffset = seconds / 10f
-            val minutesRotation = (minutes * 6f).let {
-                if (mAmbient) it else it + minuteHandOffset
+            val minutesRotation = (minutes * 6f) + run {
+                if (mAmbient) 0f else minuteHandOffset
             }
 
             val hours = mCalendar.get(Calendar.HOUR)

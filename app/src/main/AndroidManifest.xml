@@ -5,9 +5,11 @@
     <uses-feature android:name="android.hardware.type.watch"/>
 
     <!-- Required to act as a custom watch face. -->
-    <uses-permission
-            android:name="android.permission.WAKE_LOCK"/> <!-- Required for complications to receive complication data and open the provider chooser. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Required for complications to receive complication data and open the provider chooser. -->
     <uses-permission android:name="com.google.android.wearable.permission.RECEIVE_COMPLICATION_DATA"/>
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+
 
     <application
             android:allowBackup="true"
@@ -39,6 +41,10 @@
                 <category android:name="com.google.android.wearable.watchface.category.WATCH_FACE"/>
             </intent-filter>
         </service>
+
+        <activity
+                android:name=".PermissionActivity"
+                android:label="Annulus"/>
 
         <meta-data
                 android:name="com.google.android.gms.version"
