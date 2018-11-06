@@ -198,7 +198,7 @@ class Annulus : CanvasWatchFaceService() {
                 permissionIntent.putExtra(KEY_RECEIVER, mCalendarPermissionReceiver)
                 startActivity(permissionIntent)
             }
-
+            
             setWatchFaceStyle(
                 WatchFaceStyle.Builder(this@Annulus)
                     .setAcceptsTapEvents(true)
@@ -207,7 +207,6 @@ class Annulus : CanvasWatchFaceService() {
 
             mCalendar = Calendar.getInstance()
 
-            mCalendarDataSource = CalendarDataSource(contentResolver)
             initializeWatchFace()
         }
 
@@ -368,6 +367,8 @@ class Annulus : CanvasWatchFaceService() {
 
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
             drawWatchFace(canvas)
+
+            mCalendarDataSource?.updateCalendarDataIfStale() // TODO is this the best place for this?
         }
 
         private fun drawWatchFace(canvas: Canvas) {

@@ -8,11 +8,17 @@ import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
 
+private const val CALENDAR_UPDATE_FREQUENCY: Long = 10*60*1000
+
 data class CalendarData (val title: String, val begin: Long, val end: Long)
 
 class CalendarDataSource(private val contentResolver: ContentResolver) {
 
     var mCalendarData: List<CalendarData> = listOf()
+        private set
+
+    var mLastUpdated: Long = 0
+        private set
 
     /**
      * Weather and calendar data are each updated from an actor that
@@ -30,6 +36,7 @@ class CalendarDataSource(private val contentResolver: ContentResolver) {
         for (event in channel) {
             fetchCalendarData()?.let{
                 mCalendarData = it
+                mLastUpdated = System.currentTimeMillis()
             }
         }
     }
@@ -43,10 +50,19 @@ class CalendarDataSource(private val contentResolver: ContentResolver) {
     }
 
     /**
+     * Asks for a calendar data update if data is more than CALENDAR_UPDATE_FREQUENCY out of date
+     */
+    fun updateCalendarDataIfStale() {
+        if (System.currentTimeMillis() - mLastUpdated > CALENDAR_UPDATE_FREQUENCY) {
+            updateCalendarData()
+        }
+    }
+
+    /**
      * Fetches latest calendar data, in a background thread to
      * avoid blocking the main (UI) thread.
      */
-    suspend fun fetchCalendarData(): List<CalendarData>? = withContext(Dispatchers.Default) {
+    private suspend fun fetchCalendarData(): List<CalendarData>? = withContext(Dispatchers.Default) {
 
         val INSTANCE_PROJECTION = arrayOf(
             CalendarContract.Instances.EVENT_ID, // 0
