@@ -25,6 +25,8 @@ class CalendarDataSource(private val contentResolver: ContentResolver) {
      * and have no effect if an update is already in progress
      */
     private val mCalendarActor: SendChannel<Unit> = GlobalScope.actor(Dispatchers.Main, capacity = 0) {
+        Log.d("Calendar", "Initialized Calendar actor")
+
         for (event in channel) {
             fetchCalendarData()?.let{
                 mCalendarData = it
@@ -37,7 +39,7 @@ class CalendarDataSource(private val contentResolver: ContentResolver) {
      * Has no effect if an update is already in progress.
      */
     fun updateCalendarData() {
-        //mCalendarActor.offer(Unit) TODO
+        mCalendarActor.offer(Unit)
     }
 
     /**
@@ -70,6 +72,7 @@ class CalendarDataSource(private val contentResolver: ContentResolver) {
         )
 
         if (cursor == null) {
+            Log.d("Calendar", "Failed to resolve calendar data")
             null
         } else {
             val data = mutableListOf<CalendarData>()
@@ -96,7 +99,6 @@ class CalendarDataSource(private val contentResolver: ContentResolver) {
             cursor.close()
 
             Log.d("Calendar", "Fetched calendar data")
-
             data
         }
     }

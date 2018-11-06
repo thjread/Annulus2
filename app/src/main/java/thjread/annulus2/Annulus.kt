@@ -11,9 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Message
 import android.os.ResultReceiver
-import android.provider.CalendarContract
 import android.support.v4.app.ActivityCompat
-import android.support.v4.app.ActivityCompat.startActivityForResult
 import android.support.v4.content.ContextCompat
 import android.support.wearable.watchface.CanvasWatchFaceService
 import android.support.wearable.watchface.WatchFaceService
@@ -21,12 +19,10 @@ import android.support.wearable.watchface.WatchFaceStyle
 import android.util.Log
 import android.view.SurfaceHolder
 import android.view.WindowInsets
-import android.widget.Toast
 
 import java.lang.ref.WeakReference
 import java.util.Calendar
 import java.util.TimeZone
-import java.util.jar.Manifest
 
 /**
  * Updates rate in milliseconds for interactive mode. We update once a second to advance the
@@ -64,21 +60,29 @@ private const val WATCH_HAND_COLOR = Color.WHITE
 private const val WATCH_HAND_HIGHLIGHT_COLOR = Color.WHITE // TODO: Do we actually want a highlight color?
 private const val BACKGROUND_COLOR = Color.BLACK
 
-private const val PERMISSIONS_CODE = 0
-private const val CALENDAR_PERMISSION_GRANTED = 0
+/**
+ * Code for onRequestPermissionsResult callback
+ */
+private const val CALENDAR_PERMISSION_CODE = 0
+
+/**
+ * Code to tell ResultReceiver that calendar permission is granted, and key to pass ResultReceiver in Intent.
+ */
+private const val CALENDAR_PERMISSION_GRANTED_CODE = 0
 private const val KEY_RECEIVER = "KEY_RECEIVER"
 
 /**
  * Need an Activity to request permissions. Communicates back to Service using a ResultReceiver passed in the Intent.
  */
-class PermissionActivity : Activity() {// TODO better logging messages
+class PermissionActivity : Activity() {
     var mCalendarPermissionGranted = false
 
     override fun onStart() {
         super.onStart()
 
+        Log.d("Annulus", "Requesting READ_CALENDAR permission")
         ActivityCompat.requestPermissions(this,
-            arrayOf(android.Manifest.permission.READ_CALENDAR), PERMISSIONS_CODE)
+            arrayOf(android.Manifest.permission.READ_CALENDAR), CALENDAR_PERMISSION_CODE)
     }
 
     override fun onRequestPermissionsResult(
@@ -88,12 +92,12 @@ class PermissionActivity : Activity() {// TODO better logging messages
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
-        if (requestCode == PERMISSIONS_CODE) {
+        if (requestCode == CALENDAR_PERMISSION_CODE) {
             if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 mCalendarPermissionGranted = true
-                Log.d("Annulus", "Activity received calendar permission")
+                Log.d("Annulus", "READ_CALENDAR permission granted")
             } else {
-                Log.d("Annulus", "Activity failed to receive calendar permission")
+                Log.d("Annulus", "READ_CALENDAR permission denied")
             }
             finish()
         }
@@ -101,13 +105,7 @@ class PermissionActivity : Activity() {// TODO better logging messages
 
     override fun finish() {
         val receiver: ResultReceiver = getIntent().getParcelableExtra(KEY_RECEIVER)
-
-        if (mCalendarPermissionGranted) {
-            receiver.send(CALENDAR_PERMISSION_GRANTED, null)
-            Log.d("Annulus", "Activity sending that calendar permission is granted")
-        } else {
-            Log.d("Annulus", "Activity finishing without calendar permission")
-        }
+        receiver.send(CALENDAR_PERMISSION_GRANTED_CODE, null)
 
         super.finish()
     }
@@ -128,19 +126,7 @@ class PermissionActivity : Activity() {// TODO better logging messages
  */
 class Annulus : CanvasWatchFaceService() {
 
-    private var mCalendarPermissionGranted: Boolean = false
-
-    inner class MessageReceiver : ResultReceiver(null) {
-        override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
-            super.onReceiveResult(resultCode, resultData)
-            if (resultCode == CALENDAR_PERMISSION_GRANTED) {
-                Log.d("Annulus", "Result receiver received that calendar permission is granted")
-                mCalendarPermissionGranted = true
-            } else {
-                Log.d("Annulus", "Result receiver received different code")
-            }
-        }
-    }
+    private var mCalendarDataSource: CalendarDataSource? = null
 
     override fun onCreateEngine(): Engine {
         return Engine()
@@ -189,7 +175,13 @@ class Annulus : CanvasWatchFaceService() {
             }
         }
 
-        private lateinit var mCalendarDataSource: CalendarDataSource
+        private val mCalendarPermissionReceiver = object : ResultReceiver(null) {
+            override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
+                if (resultCode == CALENDAR_PERMISSION_GRANTED_CODE) {
+                    mCalendarDataSource = CalendarDataSource(contentResolver)
+                }
+            }
+        }
 
         override fun onCreate(holder: SurfaceHolder) {
             super.onCreate(holder)
@@ -199,11 +191,11 @@ class Annulus : CanvasWatchFaceService() {
              */
             if (ContextCompat.checkSelfPermission(applicationContext, android.Manifest.permission.READ_CALENDAR)
                 == PackageManager.PERMISSION_GRANTED) {
-                mCalendarPermissionGranted = true
+                mCalendarDataSource = CalendarDataSource(contentResolver)
             } else {
                 val permissionIntent = Intent(applicationContext, PermissionActivity::class.java)
                 permissionIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                permissionIntent.putExtra(KEY_RECEIVER, MessageReceiver())
+                permissionIntent.putExtra(KEY_RECEIVER, mCalendarPermissionReceiver)
                 startActivity(permissionIntent)
             }
 
@@ -305,8 +297,9 @@ class Annulus : CanvasWatchFaceService() {
 
             updateWatchHandStyle()
 
-            // Check and trigger whether or not timer should be running (only
-            // in active mode).
+            /* Check and trigger whether or not timer should be running (only
+             * in active mode).
+             */
             updateTimer()
         }
 
@@ -358,19 +351,16 @@ class Annulus : CanvasWatchFaceService() {
                     // The user has started a different gesture or otherwise cancelled the tap.
                 }
                 WatchFaceService.TAP_TYPE_TAP -> {
-                    // The user has completed the tap gesture.
-                    if (mCalendarPermissionGranted) {// TODO don't repeat this check, move into a function
-                        mCalendarDataSource.updateCalendarData()
-                    }
+                    // The user has completed the tap gesture
+                    mCalendarDataSource?.updateCalendarData()
                 }
             }
             invalidate()
         }
 
         override fun onDraw(canvas: Canvas, bounds: Rect) {
-            if (mCalendarPermissionGranted) {
-                mCalendarDataSource.updateCalendarData()// TODO don't update every tick
-                Log.d("Annulus", mCalendarDataSource.mCalendarData.toString())
+            mCalendarDataSource?.let{
+                Log.d("Annulus", "Calendar data: " + it.mCalendarData.toString())
             }
 
             val now = System.currentTimeMillis()
@@ -501,19 +491,19 @@ class Annulus : CanvasWatchFaceService() {
             super.onVisibilityChanged(visible)
 
             if (visible) {
-                registerReceiver()
+                registerTimeZoneReceiver()
                 /* Update time zone in case it changed while we weren't visible. */
                 mCalendar.timeZone = TimeZone.getDefault()
                 invalidate()
             } else {
-                unregisterReceiver()
+                unregisterTimeZoneReceiver()
             }
 
             /* Check and trigger whether or not timer should be running (only in active mode). */
             updateTimer()
         }
 
-        private fun registerReceiver() {
+        private fun registerTimeZoneReceiver() {
             if (mRegisteredTimeZoneReceiver) {
                 return
             }
@@ -522,7 +512,7 @@ class Annulus : CanvasWatchFaceService() {
             this@Annulus.registerReceiver(mTimeZoneReceiver, filter)
         }
 
-        private fun unregisterReceiver() {
+        private fun unregisterTimeZoneReceiver() {
             if (!mRegisteredTimeZoneReceiver) {
                 return
             }
