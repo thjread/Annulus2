@@ -59,6 +59,10 @@ private const val CENTER_CIRCLE_RADIUS = 0.04f
 private const val WATCH_HAND_COLOR = Color.WHITE
 private const val WATCH_HAND_HIGHLIGHT_COLOR = Color.WHITE // TODO: Do we actually want a highlight color?
 private const val BACKGROUND_COLOR = Color.BLACK
+private val CALENDAR_COLOR = Color.rgb(33, 150, 243)
+
+private const val TEXT_SIZE = 0.2f
+private const val TEXT_HEIGHT = 0.5f
 
 /**
  * Code for onRequestPermissionsResult callback
@@ -160,6 +164,7 @@ class Annulus : CanvasWatchFaceService() {
         private lateinit var mSecondPaint: Paint
         private lateinit var mTickPaint: Paint
         private lateinit var mCirclePaint: Paint
+        private lateinit var mTextPaint: Paint
 
         private var mAmbient: Boolean = false
         private var mLowBitAmbient: Boolean = false
@@ -198,7 +203,7 @@ class Annulus : CanvasWatchFaceService() {
                 permissionIntent.putExtra(KEY_RECEIVER, mCalendarPermissionReceiver)
                 startActivity(permissionIntent)
             }
-            
+
             setWatchFaceStyle(
                 WatchFaceStyle.Builder(this@Annulus)
                     .setAcceptsTapEvents(true)
@@ -242,6 +247,11 @@ class Annulus : CanvasWatchFaceService() {
                 style = Paint.Style.FILL
             }
 
+            mTextPaint = Paint().apply {
+                isAntiAlias = true
+                style = Paint.Style.FILL
+            }
+
             /* Set colors */
             updateWatchHandStyle()
         }
@@ -253,6 +263,7 @@ class Annulus : CanvasWatchFaceService() {
                 mSecondPaint.color = Color.WHITE
                 mTickPaint.color = Color.WHITE
                 mCirclePaint.color = Color.WHITE
+                mTextPaint.color = Color.WHITE
 
                 if (mLowBitAmbient) {
                     mHourPaint.isAntiAlias = false
@@ -267,6 +278,7 @@ class Annulus : CanvasWatchFaceService() {
                 mSecondPaint.color = WATCH_HAND_HIGHLIGHT_COLOR
                 mTickPaint.color = WATCH_HAND_COLOR
                 mCirclePaint.color = WATCH_HAND_HIGHLIGHT_COLOR
+                mTextPaint.color = CALENDAR_COLOR
             }
         }
 
@@ -327,6 +339,8 @@ class Annulus : CanvasWatchFaceService() {
             mCenterX = width / 2f
             mCenterY = height / 2f
             mRadius = Math.min(mCenterX, mCenterY)
+
+            mTextPaint.textSize = TEXT_SIZE*mRadius
         }
 
         override fun onApplyWindowInsets(insets: WindowInsets?) {
@@ -358,27 +372,31 @@ class Annulus : CanvasWatchFaceService() {
         }
 
         override fun onDraw(canvas: Canvas, bounds: Rect) {
-            mCalendarDataSource?.let{
-                Log.d("Annulus", "Calendar data: " + it.mCalendarData.toString())
-            }
 
             val now = System.currentTimeMillis()
             mCalendar.timeInMillis = now
 
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
-            drawWatchFace(canvas)
 
-            mCalendarDataSource?.updateCalendarDataIfStale() // TODO is this the best place for this?
-        }
-
-        private fun drawWatchFace(canvas: Canvas) {
-
-            /*
-             * Translate and scale canvas so that centre is 0, 0 and radius is 1
-             */
+            /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
             canvas.save()
             canvas.translate(mCenterX, mCenterY)
             canvas.scale(mRadius, mRadius, 0f, 0f)
+
+            drawWatchFace(canvas)
+
+            /* Restore the canvas' original orientation. */
+            canvas.restore()
+
+            mCalendarDataSource?.run{
+                val nextHourCalendarData = nextHourCalendarData(now)
+                Log.d("Annulus", nextHourCalendarData.toString())
+                drawCalendar(canvas, nextHourCalendarData)
+                updateCalendarDataIfStale()
+            }
+       }
+
+        private fun drawWatchFace(canvas: Canvas) {
 
             /*
              * Draw ticks.
@@ -419,9 +437,8 @@ class Annulus : CanvasWatchFaceService() {
 
             val minutes = mCalendar.get(Calendar.MINUTE)
             val minuteHandOffset = seconds / 10f
-            val minutesRotation = (minutes * 6f) + run {
-                if (mAmbient) 0f else minuteHandOffset
-            }
+            val minutesRotation = (minutes * 6f) +
+                    if (mAmbient) 0f else minuteHandOffset
 
             val hours = mCalendar.get(Calendar.HOUR)
             val hourHandOffset = minutes / 2f
@@ -483,9 +500,19 @@ class Annulus : CanvasWatchFaceService() {
                 CENTER_CIRCLE_RADIUS,
                 mCirclePaint
             )
+        }
 
-            /* Restore the canvas' original orientation. */
-            canvas.restore()
+
+        private fun drawCalendar(canvas: Canvas, nextHourData: List<CalendarData>) {
+            if (nextHourData.size > 0) {
+                val event = nextHourData[0]
+                val width = mTextPaint.measureText(event.title)
+                val height = TEXT_HEIGHT*mRadius
+                canvas.drawText(event.title,
+                    mCenterX-width/2f,
+                    mCenterY+height,
+                    mTextPaint)
+            }
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
