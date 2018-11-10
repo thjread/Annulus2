@@ -59,10 +59,13 @@ private const val CENTER_CIRCLE_RADIUS = 0.04f
 private const val WATCH_HAND_COLOR = Color.WHITE
 private const val WATCH_HAND_HIGHLIGHT_COLOR = Color.WHITE // TODO: Do we actually want a highlight color?
 private const val BACKGROUND_COLOR = Color.BLACK
-private val CALENDAR_COLOR = Color.rgb(33, 150, 243)
+private val CALENDAR_COLORS = listOf(
+    Color.rgb(33, 150, 243),
+    Color.rgb(171, 71, 188),
+    Color.rgb(255, 87, 34))
 
-private const val TEXT_SIZE = 0.2f
-private const val TEXT_HEIGHT = 0.5f
+private const val CALENDAR_TEXT_SIZE = 0.18f
+private val CALENDAR_TEXT_HEIGHTS = listOf(0.5f, 0.25f)
 
 /**
  * Code for onRequestPermissionsResult callback
@@ -278,7 +281,6 @@ class Annulus : CanvasWatchFaceService() {
                 mSecondPaint.color = WATCH_HAND_HIGHLIGHT_COLOR
                 mTickPaint.color = WATCH_HAND_COLOR
                 mCirclePaint.color = WATCH_HAND_HIGHLIGHT_COLOR
-                mTextPaint.color = CALENDAR_COLOR
             }
         }
 
@@ -340,7 +342,7 @@ class Annulus : CanvasWatchFaceService() {
             mCenterY = height / 2f
             mRadius = Math.min(mCenterX, mCenterY)
 
-            mTextPaint.textSize = TEXT_SIZE*mRadius
+            mTextPaint.textSize = CALENDAR_TEXT_SIZE*mRadius
         }
 
         override fun onApplyWindowInsets(insets: WindowInsets?) {
@@ -378,15 +380,7 @@ class Annulus : CanvasWatchFaceService() {
 
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
 
-            /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
-            canvas.save()
-            canvas.translate(mCenterX, mCenterY)
-            canvas.scale(mRadius, mRadius, 0f, 0f)
-
             drawWatchFace(canvas)
-
-            /* Restore the canvas' original orientation. */
-            canvas.restore()
 
             mCalendarDataSource?.run{
                 val nextHourCalendarData = nextHourCalendarData(now)
@@ -397,6 +391,11 @@ class Annulus : CanvasWatchFaceService() {
        }
 
         private fun drawWatchFace(canvas: Canvas) {
+
+            /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
+            canvas.save()
+            canvas.translate(mCenterX, mCenterY)
+            canvas.scale(mRadius, mRadius, 0f, 0f)
 
             /*
              * Draw ticks.
@@ -500,18 +499,33 @@ class Annulus : CanvasWatchFaceService() {
                 CENTER_CIRCLE_RADIUS,
                 mCirclePaint
             )
+
+            /* Restore the canvas' original orientation. */
+            canvas.restore()
         }
 
 
         private fun drawCalendar(canvas: Canvas, nextHourData: List<CalendarData>) {
-            if (nextHourData.size > 0) {
-                val event = nextHourData[0]
-                val width = mTextPaint.measureText(event.title)
-                val height = TEXT_HEIGHT*mRadius
-                canvas.drawText(event.title,
-                    mCenterX-width/2f,
-                    mCenterY+height,
-                    mTextPaint)
+            val displayNumber = minOf(nextHourData.size, CALENDAR_COLORS.size)
+            for (i in 0 until displayNumber) {
+                val event = nextHourData[i]
+                mTextPaint.color = CALENDAR_COLORS[i]
+
+                /*
+                 * Display the titles of the next two calendar events.
+                 */
+                if (i < CALENDAR_TEXT_HEIGHTS.size) {
+                    /*
+                     * Heights are listed from bottom to top. Prefer text being placed as far down as possible,
+                     * but events should be listed top to bottom.
+                     */
+                    val height = CALENDAR_TEXT_HEIGHTS[minOf(displayNumber, CALENDAR_TEXT_HEIGHTS.size)-1-i]*mRadius
+                    val width = mTextPaint.measureText(event.title)
+                    canvas.drawText(event.title,
+                        mCenterX-width/2f,
+                        mCenterY+height,
+                        mTextPaint)
+                }
             }
         }
 
