@@ -16,6 +16,7 @@ import android.support.v4.content.ContextCompat
 import android.support.wearable.watchface.CanvasWatchFaceService
 import android.support.wearable.watchface.WatchFaceService
 import android.support.wearable.watchface.WatchFaceStyle
+import android.text.format.DateUtils
 import android.util.Log
 import android.view.SurfaceHolder
 import android.view.WindowInsets
@@ -63,7 +64,10 @@ private val CALENDAR_COLORS = listOf(
     Color.rgb(33, 150, 243),
     Color.rgb(171, 71, 188),
     Color.rgb(255, 87, 34))
+private const val CALENDAR_GAP_MINUTES = 1.5
 
+private const val CALENDAR_THICKNESS = 0.02f
+private const val CALENDAR_RADIUS = 0.75f
 private const val CALENDAR_TEXT_SIZE = 0.18f
 private val CALENDAR_TEXT_HEIGHTS = listOf(0.5f, 0.25f)
 
@@ -168,6 +172,7 @@ class Annulus : CanvasWatchFaceService() {
         private lateinit var mTickPaint: Paint
         private lateinit var mCirclePaint: Paint
         private lateinit var mTextPaint: Paint
+        private lateinit var mCalendarPaint: Paint
 
         private var mAmbient: Boolean = false
         private var mLowBitAmbient: Boolean = false
@@ -255,6 +260,13 @@ class Annulus : CanvasWatchFaceService() {
                 style = Paint.Style.FILL
             }
 
+            mCalendarPaint = Paint().apply {
+                strokeWidth = CALENDAR_THICKNESS
+                isAntiAlias = true
+                strokeCap = Paint.Cap.BUTT
+                style = Paint.Style.STROKE
+            }
+
             /* Set colors */
             updateWatchHandStyle()
         }
@@ -266,7 +278,6 @@ class Annulus : CanvasWatchFaceService() {
                 mSecondPaint.color = Color.WHITE
                 mTickPaint.color = Color.WHITE
                 mCirclePaint.color = Color.WHITE
-                mTextPaint.color = Color.WHITE
 
                 if (mLowBitAmbient) {
                     mHourPaint.isAntiAlias = false
@@ -274,6 +285,8 @@ class Annulus : CanvasWatchFaceService() {
                     mSecondPaint.isAntiAlias = false
                     mTickPaint.isAntiAlias = false
                     mCirclePaint.isAntiAlias = false
+                    mTextPaint.isAntiAlias = false
+                    mCalendarPaint.isAntiAlias = false
                 }
             } else {
                 mHourPaint.color = WATCH_HAND_COLOR
@@ -281,6 +294,14 @@ class Annulus : CanvasWatchFaceService() {
                 mSecondPaint.color = WATCH_HAND_HIGHLIGHT_COLOR
                 mTickPaint.color = WATCH_HAND_COLOR
                 mCirclePaint.color = WATCH_HAND_HIGHLIGHT_COLOR
+
+                mHourPaint.isAntiAlias = true
+                mMinutePaint.isAntiAlias = true
+                mSecondPaint.isAntiAlias = true
+                mTickPaint.isAntiAlias = true
+                mCirclePaint.isAntiAlias = true
+                mTextPaint.isAntiAlias = true
+                mCalendarPaint.isAntiAlias = true
             }
         }
 
@@ -368,6 +389,7 @@ class Annulus : CanvasWatchFaceService() {
                 WatchFaceService.TAP_TYPE_TAP -> {
                     // The user has completed the tap gesture
                     mCalendarDataSource?.updateCalendarData()
+                    // TODO add feedback?
                 }
             }
             invalidate()
@@ -376,21 +398,22 @@ class Annulus : CanvasWatchFaceService() {
         override fun onDraw(canvas: Canvas, bounds: Rect) {
 
             val now = System.currentTimeMillis()
-            mCalendar.timeInMillis = now
 
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
 
-            drawWatchFace(canvas)
+            drawWatchFace(canvas, now)
 
             mCalendarDataSource?.run{
                 val nextHourCalendarData = nextHourCalendarData(now)
                 Log.d("Annulus", nextHourCalendarData.toString())
-                drawCalendar(canvas, nextHourCalendarData)
+                drawCalendar(canvas, now, nextHourCalendarData)
                 updateCalendarDataIfStale()
             }
-       }
+        }
 
-        private fun drawWatchFace(canvas: Canvas) {
+        private fun drawWatchFace(canvas: Canvas, now: Long) {
+
+            mCalendar.timeInMillis = now
 
             /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
             canvas.save()
@@ -504,15 +527,55 @@ class Annulus : CanvasWatchFaceService() {
             canvas.restore()
         }
 
-
-        private fun drawCalendar(canvas: Canvas, nextHourData: List<CalendarData>) {
+        /**
+         * TODO documentation
+         */
+        private fun drawCalendar(canvas: Canvas, now: Long, nextHourData: List<CalendarData>) {
             val displayNumber = minOf(nextHourData.size, CALENDAR_COLORS.size)
             for (i in 0 until displayNumber) {
                 val event = nextHourData[i]
                 mTextPaint.color = CALENDAR_COLORS[i]
+                mCalendarPaint.color = CALENDAR_COLORS[i]
 
                 /*
-                 * Display the titles of the next two calendar events.
+                 * Draw an arc showing when the calendar event is happening.
+                 */
+
+                /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
+                canvas.save()
+                canvas.translate(mCenterX, mCenterY)
+                canvas.scale(mRadius, mRadius, 0f, 0f)
+
+                val start = maxOf(event.begin, now)
+                val end = minOf(event.end,
+                    now + DateUtils.HOUR_IN_MILLIS - (CALENDAR_GAP_MINUTES*DateUtils.MINUTE_IN_MILLIS).toLong())
+
+                mCalendar.timeInMillis = start
+                // TODO put these calculations in a function
+                val startSeconds = mCalendar.get(Calendar.SECOND)
+                val startMinutes = mCalendar.get(Calendar.MINUTE)
+                val startOffset = startSeconds / 10f
+                val startAngle = (startMinutes * 6f) +
+                        if (mAmbient) 0f else startOffset
+
+                mCalendar.timeInMillis = end
+                val endSeconds = mCalendar.get(Calendar.SECOND)
+                val endMinutes = mCalendar.get(Calendar.MINUTE)
+                val endOffset = endSeconds / 10f
+                val endAngle = (endMinutes * 6f) +
+                        if (mAmbient) 0f else endOffset
+
+                val sweepAngle = (endAngle+360-startAngle) % 360
+
+                /* Angle measured from x axis rather than y axis, so subtract 90 degrees */
+                canvas.drawArc(RectF(-CALENDAR_RADIUS, -CALENDAR_RADIUS, CALENDAR_RADIUS, CALENDAR_RADIUS),
+                    startAngle-90, sweepAngle, false, mCalendarPaint)
+
+                /* Restore the canvas' original orientation. */
+                canvas.restore()
+
+                /*
+                 * Display the title of the next two calendar events.
                  */
                 if (i < CALENDAR_TEXT_HEIGHTS.size) {
                     /*
