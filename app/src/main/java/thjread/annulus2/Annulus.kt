@@ -72,28 +72,30 @@ private const val CALENDAR_TEXT_SIZE = 0.18f
 private val CALENDAR_TEXT_HEIGHTS = listOf(0.5f, 0.25f)
 
 /**
- * Code for onRequestPermissionsResult callback
- */
-private const val CALENDAR_PERMISSION_CODE = 0
-
-/**
  * Code to tell ResultReceiver that calendar permission is granted, and key to pass ResultReceiver in Intent.
  */
-private const val CALENDAR_PERMISSION_GRANTED_CODE = 0
+private const val PERMISSION_RESULT_CODE = 0
 private const val KEY_RECEIVER = "KEY_RECEIVER"
+private const val KEY_PERMISSIONS_GRANTED = "KEY_PERMISSIONS_GRANTED"
 
 /**
  * Need an Activity to request permissions. Communicates back to Service using a ResultReceiver passed in the Intent.
  */
-class PermissionActivity : Activity() {
-    var mCalendarPermissionGranted = false
+class PermissionActivity() : Activity() {
+    var mPermissionsGranted = BooleanArray(3)
+
+    private val PERMISSIONS = arrayOf(
+        android.Manifest.permission.READ_CALENDAR,
+        android.Manifest.permission.INTERNET,
+        android.Manifest.permission.ACCESS_COARSE_LOCATION)
+
+    private val PERMISSION_CODE = 0
 
     override fun onStart() {
         super.onStart()
 
-        Log.d("Annulus", "Requesting READ_CALENDAR permission")
-        ActivityCompat.requestPermissions(this,
-            arrayOf(android.Manifest.permission.READ_CALENDAR), CALENDAR_PERMISSION_CODE)
+        Log.d("Annulus", "Requesting permissions")
+        ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_CODE)
     }
 
     override fun onRequestPermissionsResult(
@@ -103,20 +105,22 @@ class PermissionActivity : Activity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
-        if (requestCode == CALENDAR_PERMISSION_CODE) {
-            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                mCalendarPermissionGranted = true
-                Log.d("Annulus", "READ_CALENDAR permission granted")
-            } else {
-                Log.d("Annulus", "READ_CALENDAR permission denied")
+        if (requestCode == PERMISSION_CODE) {
+            for (i in 0 until minOf(3, grantResults.size)) {
+                if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                    mPermissionsGranted[i] = true
+                    Log.d("Annulus", "${PERMISSIONS[i]} permission granted")
+                } else {
+                    Log.d("Annulus", "${PERMISSIONS[i]} permission denied")
+                }
             }
             finish()
         }
     }
 
     override fun finish() {
-        val receiver: ResultReceiver = getIntent().getParcelableExtra(KEY_RECEIVER)
-        receiver.send(CALENDAR_PERMISSION_GRANTED_CODE, null)
+        val receiver: ResultReceiver = intent.getParcelableExtra(KEY_RECEIVER)
+        receiver.send(PERMISSION_RESULT_CODE, Bundle().apply{putBooleanArray(KEY_PERMISSIONS_GRANTED, mPermissionsGranted)})
 
         super.finish()
     }
@@ -189,10 +193,17 @@ class Annulus : CanvasWatchFaceService() {
             }
         }
 
-        private val mCalendarPermissionReceiver = object : ResultReceiver(null) {
+        private val mPermissionReceiver = object : ResultReceiver(null) {
             override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
-                if (resultCode == CALENDAR_PERMISSION_GRANTED_CODE) {
-                    mCalendarDataSource = CalendarDataSource(contentResolver)
+                if (resultCode == PERMISSION_RESULT_CODE) {
+                    resultData?.getBooleanArray(KEY_PERMISSIONS_GRANTED)?.let {permissionsGranted ->
+                        if (permissionsGranted[0] && mCalendarDataSource == null) {
+                            mCalendarDataSource = CalendarDataSource(contentResolver)
+                        }
+                        if (permissionsGranted[1] && permissionsGranted[2] && mWeatherDataSource == null) {
+                            mWeatherDataSource = WeatherDataSource(contentResolver)
+                        }
+                    }
                 }
             }
         }
@@ -201,18 +212,30 @@ class Annulus : CanvasWatchFaceService() {
             super.onCreate(holder)
 
             /*
-             * Ask for READ_CALENDAR permission if we don't already have it
+             * Ask for permissions if we don't already have them
              */
+            var needPermissions = false
             if (ContextCompat.checkSelfPermission(applicationContext, android.Manifest.permission.READ_CALENDAR)
                 == PackageManager.PERMISSION_GRANTED) {
                 mCalendarDataSource = CalendarDataSource(contentResolver)
             } else {
+                needPermissions = true
+            }
+            if (ContextCompat.checkSelfPermission(applicationContext, android.Manifest.permission.INTERNET)
+                == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(applicationContext, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+                mWeatherDataSource = WeatherDataSource(contentResolver)
+            } else {
+                needPermissions = true
+            }
+
+            if (needPermissions) {
                 val permissionIntent = Intent(applicationContext, PermissionActivity::class.java)
                 permissionIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                permissionIntent.putExtra(KEY_RECEIVER, mCalendarPermissionReceiver)
+                permissionIntent.putExtra(KEY_RECEIVER, mPermissionReceiver)
                 startActivity(permissionIntent)
             }
-            mWeatherDataSource = WeatherDataSource(contentResolver)
 
             setWatchFaceStyle(
                 WatchFaceStyle.Builder(this@Annulus)
