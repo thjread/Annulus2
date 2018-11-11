@@ -540,6 +540,7 @@ class Annulus : CanvasWatchFaceService() {
                 /*
                  * Draw an arc showing when the calendar event is happening.
                  */
+                // TODO what about when events overlap
 
                 /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
                 canvas.save()
@@ -575,7 +576,7 @@ class Annulus : CanvasWatchFaceService() {
                 canvas.restore()
 
                 /*
-                 * Display the title of the next two calendar events.
+                 * Display the title of the event.
                  */
                 if (i < CALENDAR_TEXT_HEIGHTS.size) {
                     /*
