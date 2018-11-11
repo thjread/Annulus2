@@ -201,7 +201,7 @@ class Annulus : CanvasWatchFaceService() {
                             mCalendarDataSource = CalendarDataSource(contentResolver)
                         }
                         if (permissionsGranted[1] && permissionsGranted[2] && mWeatherDataSource == null) {
-                            mWeatherDataSource = WeatherDataSource(contentResolver)
+                            mWeatherDataSource = WeatherDataSource(applicationContext)
                         }
                     }
                 }
@@ -225,7 +225,7 @@ class Annulus : CanvasWatchFaceService() {
                 == PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(applicationContext, android.Manifest.permission.ACCESS_COARSE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
-                mWeatherDataSource = WeatherDataSource(contentResolver)
+                mWeatherDataSource = WeatherDataSource(applicationContext)
             } else {
                 needPermissions = true
             }
