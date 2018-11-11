@@ -138,6 +138,7 @@ class PermissionActivity : Activity() {
 class Annulus : CanvasWatchFaceService() {
 
     private var mCalendarDataSource: CalendarDataSource? = null
+    private var mWeatherDataSource: WeatherDataSource? = null
 
     override fun onCreateEngine(): Engine {
         return Engine()
@@ -211,6 +212,7 @@ class Annulus : CanvasWatchFaceService() {
                 permissionIntent.putExtra(KEY_RECEIVER, mCalendarPermissionReceiver)
                 startActivity(permissionIntent)
             }
+            mWeatherDataSource = WeatherDataSource(contentResolver)
 
             setWatchFaceStyle(
                 WatchFaceStyle.Builder(this@Annulus)
@@ -389,6 +391,7 @@ class Annulus : CanvasWatchFaceService() {
                 WatchFaceService.TAP_TYPE_TAP -> {
                     // The user has completed the tap gesture
                     mCalendarDataSource?.updateCalendarData()
+                    mWeatherDataSource?.updateWeatherData()
                     // TODO add feedback?
                 }
             }
@@ -402,6 +405,11 @@ class Annulus : CanvasWatchFaceService() {
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
 
             drawWatchFace(canvas, now)
+
+            mWeatherDataSource?.run{
+                Log.d("Annulus", mWeatherData.toString())
+                updateWeatherDataIfStale()
+            }
 
             mCalendarDataSource?.run{
                 val nextHourCalendarData = nextHourCalendarData(now)
