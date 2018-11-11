@@ -431,6 +431,7 @@ class Annulus : CanvasWatchFaceService() {
 
             mWeatherDataSource?.run{
                 Log.d("Annulus", mWeatherData.toString())
+                // TODO Minute hand as thermometer (-10 to 30?), maybe hour as barometer, second hand curve for wind
                 updateWeatherDataIfStale()
             }
 
