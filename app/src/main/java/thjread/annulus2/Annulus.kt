@@ -63,7 +63,9 @@ private const val CENTER_CIRCLE_RADIUS = 0.06f
 // TODO move these to a values file
 private const val WATCH_HAND_COLOR = Color.WHITE
 private const val WATCH_HAND_HIGHLIGHT_COLOR = Color.WHITE // TODO: Do we actually want a highlight color?
-private const val WATCH_HAND_THERMOMETER_COLOR = Color.RED
+private const val WATCH_HAND_THERMOMETER_COLOR = Color.RED // TODO better color
+private val ZERO_DEGREES_COLOR = Color.rgb(93, 173, 226)
+private val FIVE_DEGREES_COLOR = Color.rgb(175, 122, 197)
 private const val BACKGROUND_COLOR = Color.BLACK
 private val CALENDAR_COLORS = listOf(
     Color.rgb(33, 150, 243),
@@ -265,15 +267,14 @@ class Annulus : CanvasWatchFaceService() {
                 style = Paint.Style.FILL
             }
 
-            /* Set strokeWidth before each use */
+            /* Set color, strokeWidth before each use */
             mHandStrokePaint = Paint().apply {
                 isAntiAlias = true
-                strokeCap = Paint.Cap.ROUND
+                strokeCap = Paint.Cap.BUTT
                 style = Paint.Style.STROKE
             }
 
             /* Should set strokeWidth before each use */
-            // TODO merge with mHandStrokePaint
             mTickPaint = Paint().apply {
                 isAntiAlias = true
                 strokeCap = Paint.Cap.ROUND
@@ -499,12 +500,6 @@ class Annulus : CanvasWatchFaceService() {
             val hourHandOffset = minutes / 2f
             val hoursRotation = hours * 30f + hourHandOffset
 
-            val minuteTemperatureLength = MINUTE_LENGTH * if (weatherData.currentTemperature != null) {
-                /* Display temperatures from -10 to 30 degrees */
-                //TODO
-                (weatherData.currentTemperature.toFloat()+10f)/40f
-            } else { 1f }
-
             /*
              * Draw a tapering watch hand with a pointed tip
              */
@@ -540,6 +535,7 @@ class Annulus : CanvasWatchFaceService() {
             if (!mAmbient) {
                 canvas.save()
                 canvas.rotate(secondsRotation, 0f, 0f)
+                mHandStrokePaint.color = WATCH_HAND_COLOR
                 mHandStrokePaint.strokeWidth = SECOND_THICKNESS
                 canvas.drawLine(
                     0f, 0f,
@@ -559,11 +555,27 @@ class Annulus : CanvasWatchFaceService() {
 
             canvas.save()
             canvas.rotate(minutesRotation, 0f, 0f)
+            fun temperatureToRatio(temperature: Double): Float = (temperature.toFloat()+10f)/(10f+30f)
+            val minuteTemperatureLength = MINUTE_LENGTH * if (weatherData.currentTemperature != null) {
+                /* Display temperatures from -10 to 30 degrees */
+                temperatureToRatio(weatherData.currentTemperature)
+            } else { 1f }
             mHandFillPaint.color = WATCH_HAND_THERMOMETER_COLOR
             canvas.drawPath(
                 handPath(
                     MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, minuteTemperatureLength, 0f),
                 mHandFillPaint)
+            //TODO use temperature to length function
+            for (temperature in -5..25 step 5){
+                mHandStrokePaint.color = if (temperature == 0) ZERO_DEGREES_COLOR else FIVE_DEGREES_COLOR
+                mHandStrokePaint.strokeWidth = MINUTE_BORDER_THICKNESS
+                val ratio = temperatureToRatio(temperature.toDouble())
+                val width = ratio*MINUTE_THICKNESS + (1-ratio)*MINUTE_TIP_THICKNESS + MINUTE_BORDER_THICKNESS
+                canvas.drawLine(-width/2f, -ratio*MINUTE_LENGTH,
+                    width/2f, -ratio*MINUTE_LENGTH,
+                    mHandStrokePaint)
+            }
+            mHandStrokePaint.color = WATCH_HAND_COLOR
             mHandStrokePaint.strokeWidth = MINUTE_BORDER_THICKNESS
             canvas.drawPath(
                 handPath(
