@@ -439,9 +439,29 @@ class Annulus : CanvasWatchFaceService() {
             }
         }
 
-        private fun drawWatchFace(canvas: Canvas, now: Long, weatherData: WatchfaceWeatherData) {
+        /**
+         * Calculate angle of the watch hands in degrees.
+         */
+        private fun secondAngle(calendar: Calendar): Float {
+            val seconds = calendar.get(Calendar.SECOND)
+            return seconds*6f
+        }
+        private fun minuteAngle(calendar: Calendar): Float {
+            val seconds = calendar.get(Calendar.SECOND)
+            val minutes = calendar.get(Calendar.MINUTE)
+            val offset = seconds / 10f
+            /* Face only updates once per minute in ambient mode, so want minute hand at a whole number of minutes. */
+            return (minutes * 6f) +
+                    if (mAmbient) 0f else offset
+        }
+        private fun hourAngle(calendar: Calendar): Float {
+            val minutes = calendar.get(Calendar.MINUTE)
+            val hours = calendar.get(Calendar.HOUR)
+            val offset = minutes / 2f
+            return hours * 30f + offset
+        }
 
-            mCalendar.timeInMillis = now
+        private fun drawWatchFace(canvas: Canvas, now: Long, weatherData: WatchfaceWeatherData) {
 
             /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
             canvas.save()
@@ -479,22 +499,6 @@ class Annulus : CanvasWatchFaceService() {
             }
 
             /*
-             * These calculations reflect the rotation in degrees per unit of time, e.g.,
-             * 360 / 60 = 6 and 360 / 12 = 30.
-             */
-            val seconds = mCalendar.get(Calendar.SECOND)
-            val secondsRotation = seconds * 6f
-
-            val minutes = mCalendar.get(Calendar.MINUTE)
-            val minuteHandOffset = seconds / 10f
-            val minutesRotation = (minutes * 6f) +
-                    if (mAmbient) 0f else minuteHandOffset
-
-            val hours = mCalendar.get(Calendar.HOUR)
-            val hourHandOffset = minutes / 2f
-            val hoursRotation = hours * 30f + hourHandOffset
-
-            /*
              * Draw a tapering watch hand with a pointed tip
              */
             fun handPath(
@@ -511,6 +515,15 @@ class Annulus : CanvasWatchFaceService() {
                 p.close()
                 return p
             }
+
+            /*
+             * Calculate hand rotations.
+             */
+
+            mCalendar.timeInMillis = now
+            val secondsRotation = secondAngle(mCalendar)
+            val minutesRotation = minuteAngle(mCalendar)
+            val hoursRotation = hourAngle(mCalendar)
 
             /*
              * Draw hour hand, with a barometer-style green bar showing the current pressure.
@@ -655,7 +668,7 @@ class Annulus : CanvasWatchFaceService() {
         }
 
         /**
-         * TODO documentation
+         * Show names and durations of calendar events in the next hour.
          */
         private fun drawCalendar(canvas: Canvas, now: Long, nextHourData: List<CalendarData>) {
             val displayNumber = minOf(nextHourData.size, CALENDAR_COLORS.size)
@@ -679,19 +692,10 @@ class Annulus : CanvasWatchFaceService() {
                     now + DateUtils.HOUR_IN_MILLIS - (CALENDAR_GAP_MINUTES*DateUtils.MINUTE_IN_MILLIS).toLong())
 
                 mCalendar.timeInMillis = start
-                // TODO put these calculations in a function
-                val startSeconds = mCalendar.get(Calendar.SECOND)
-                val startMinutes = mCalendar.get(Calendar.MINUTE)
-                val startOffset = startSeconds / 10f
-                val startAngle = (startMinutes * 6f) +
-                        if (mAmbient) 0f else startOffset
+                val startAngle = minuteAngle(mCalendar)
 
                 mCalendar.timeInMillis = end
-                val endSeconds = mCalendar.get(Calendar.SECOND)
-                val endMinutes = mCalendar.get(Calendar.MINUTE)
-                val endOffset = endSeconds / 10f
-                val endAngle = (endMinutes * 6f) +
-                        if (mAmbient) 0f else endOffset
+                val endAngle = minuteAngle(mCalendar)
 
                 val sweepAngle = (endAngle+360-startAngle) % 360
 
