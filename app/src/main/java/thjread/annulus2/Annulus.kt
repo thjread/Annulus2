@@ -20,6 +20,7 @@ import android.text.format.DateUtils
 import android.util.Log
 import android.view.SurfaceHolder
 import android.view.WindowInsets
+import thjread.annulus.WeatherService
 
 import java.lang.ref.WeakReference
 import java.util.Calendar
@@ -43,22 +44,26 @@ private const val MAJOR_TICK_LENGTH = 0.1875f
 private const val MINOR_TICK_LENGTH = 0.0625f
 
 private const val HOUR_LENGTH = 0.5f
-private const val HOUR_THICKNESS = 0.05f
+private const val HOUR_THICKNESS = 0.08f
 private const val HOUR_TIP_THICKNESS = 0.04f
 private const val HOUR_TIP_LENGTH = 0.04f
 
 private const val MINUTE_LENGTH = 0.75f
-private const val MINUTE_THICKNESS = 0.04f
+private const val MINUTE_BORDER_THICKNESS = 0.015f
+private const val MINUTE_THICKNESS = 0.05f
 private const val MINUTE_TIP_THICKNESS = 0.032f
 private const val MINUTE_TIP_LENGTH = 0.04f
 
 private const val SECOND_LENGTH = 0.875f
 private const val SECOND_THICKNESS = 0.02f
 
-private const val CENTER_CIRCLE_RADIUS = 0.04f
+private const val INNER_CIRCLE_RADIUS = 0.045f
+private const val CENTER_CIRCLE_RADIUS = 0.06f
 
+// TODO move these to a values file
 private const val WATCH_HAND_COLOR = Color.WHITE
 private const val WATCH_HAND_HIGHLIGHT_COLOR = Color.WHITE // TODO: Do we actually want a highlight color?
+private const val WATCH_HAND_THERMOMETER_COLOR = Color.RED
 private const val BACKGROUND_COLOR = Color.BLACK
 private val CALENDAR_COLORS = listOf(
     Color.rgb(33, 150, 243),
@@ -126,6 +131,10 @@ class PermissionActivity() : Activity() {
     }
 }
 
+data class WatchfaceWeatherData (val currentTemperature: Double?) {
+    constructor(data: WeatherService.WeatherData?) : this(data?.currently?.temperature)
+}
+
 /**
  * Analog watch face with a ticking second hand. In ambient mode, the second hand isn't
  * shown. On devices with low-bit ambient mode, the hands are drawn without anti-aliasing in ambient
@@ -171,9 +180,8 @@ class Annulus : CanvasWatchFaceService() {
         private var mRadius: Float = 0F
         private var mChinSize: Float = 0F
 
-        private lateinit var mHourPaint: Paint
-        private lateinit var mMinutePaint: Paint
-        private lateinit var mSecondPaint: Paint
+        private lateinit var mHandFillPaint: Paint
+        private lateinit var mHandStrokePaint: Paint
         private lateinit var mTickPaint: Paint
         private lateinit var mCirclePaint: Paint
         private lateinit var mTextPaint: Paint
@@ -249,31 +257,30 @@ class Annulus : CanvasWatchFaceService() {
         }
 
         private fun initializeWatchFace() {
-            mHourPaint = Paint().apply {
+
+            /* Set color before each use */
+            mHandFillPaint = Paint().apply {
                 strokeWidth = 0F
                 isAntiAlias = true
                 style = Paint.Style.FILL
             }
 
-            mMinutePaint = Paint().apply {
-                strokeWidth = 0F
-                isAntiAlias = true
-                style = Paint.Style.FILL
-            }
-
-            mSecondPaint = Paint().apply {
-                strokeWidth = SECOND_THICKNESS
+            /* Set strokeWidth before each use */
+            mHandStrokePaint = Paint().apply {
                 isAntiAlias = true
                 strokeCap = Paint.Cap.ROUND
                 style = Paint.Style.STROKE
             }
 
+            /* Should set strokeWidth before each use */
+            // TODO merge with mHandStrokePaint
             mTickPaint = Paint().apply {
                 isAntiAlias = true
                 strokeCap = Paint.Cap.ROUND
                 style = Paint.Style.STROKE
             }
 
+            // TODO merge with mHandFillPaint
             mCirclePaint = Paint().apply {
                 strokeWidth = 0f
                 isAntiAlias = true
@@ -298,31 +305,25 @@ class Annulus : CanvasWatchFaceService() {
 
         private fun updateWatchHandStyle() {
             if (mAmbient) {
-                mHourPaint.color = Color.WHITE
-                mMinutePaint.color = Color.WHITE
-                mSecondPaint.color = Color.WHITE
+                mHandStrokePaint.color = Color.WHITE
                 mTickPaint.color = Color.WHITE
                 mCirclePaint.color = Color.WHITE
 
                 if (mLowBitAmbient) {
-                    mHourPaint.isAntiAlias = false
-                    mMinutePaint.isAntiAlias = false
-                    mSecondPaint.isAntiAlias = false
+                    mHandFillPaint.isAntiAlias = false
+                    mHandStrokePaint.isAntiAlias = false
                     mTickPaint.isAntiAlias = false
                     mCirclePaint.isAntiAlias = false
                     mTextPaint.isAntiAlias = false
                     mCalendarPaint.isAntiAlias = false
                 }
             } else {
-                mHourPaint.color = WATCH_HAND_COLOR
-                mMinutePaint.color = WATCH_HAND_COLOR
-                mSecondPaint.color = WATCH_HAND_HIGHLIGHT_COLOR
+                mHandStrokePaint.color = WATCH_HAND_HIGHLIGHT_COLOR
                 mTickPaint.color = WATCH_HAND_COLOR
                 mCirclePaint.color = WATCH_HAND_HIGHLIGHT_COLOR
 
-                mHourPaint.isAntiAlias = true
-                mMinutePaint.isAntiAlias = true
-                mSecondPaint.isAntiAlias = true
+                mHandFillPaint.isAntiAlias = true
+                mHandStrokePaint.isAntiAlias = true
                 mTickPaint.isAntiAlias = true
                 mCirclePaint.isAntiAlias = true
                 mTextPaint.isAntiAlias = true
@@ -369,9 +370,8 @@ class Annulus : CanvasWatchFaceService() {
             /* Dim display in mute mode. */
             if (mMuteMode != inMuteMode) {
                 mMuteMode = inMuteMode
-                mHourPaint.alpha = if (inMuteMode) 100 else 255
-                mMinutePaint.alpha = if (inMuteMode) 100 else 255
-                mSecondPaint.alpha = if (inMuteMode) 80 else 255
+                mHandFillPaint.alpha = if (inMuteMode) 100 else 255
+                mHandStrokePaint.alpha = if (inMuteMode) 80 else 255
                 invalidate()
             }
         }
@@ -427,7 +427,8 @@ class Annulus : CanvasWatchFaceService() {
 
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
 
-            drawWatchFace(canvas, now)
+            val watchfaceWeatherData = WatchfaceWeatherData(mWeatherDataSource?.mWeatherData)
+            drawWatchFace(canvas, now, watchfaceWeatherData)
 
             mWeatherDataSource?.run{
                 Log.d("Annulus", mWeatherData.toString())
@@ -443,7 +444,7 @@ class Annulus : CanvasWatchFaceService() {
             }
         }
 
-        private fun drawWatchFace(canvas: Canvas, now: Long) {
+        private fun drawWatchFace(canvas: Canvas, now: Long, weatherData: WatchfaceWeatherData) {
 
             mCalendar.timeInMillis = now
 
@@ -498,6 +499,12 @@ class Annulus : CanvasWatchFaceService() {
             val hourHandOffset = minutes / 2f
             val hoursRotation = hours * 30f + hourHandOffset
 
+            val minuteTemperatureLength = MINUTE_LENGTH * if (weatherData.currentTemperature != null) {
+                /* Display temperatures from -10 to 30 degrees */
+                //TODO
+                (weatherData.currentTemperature.toFloat()+10f)/40f
+            } else { 1f }
+
             /*
              * Draw a tapering watch hand with a pointed tip
              */
@@ -518,20 +525,12 @@ class Annulus : CanvasWatchFaceService() {
 
             canvas.save()
             canvas.rotate(hoursRotation, 0f, 0f)
+            mHandFillPaint.color = WATCH_HAND_COLOR
             canvas.drawPath(
                 handPath(
                     HOUR_THICKNESS, HOUR_TIP_THICKNESS, HOUR_LENGTH,
                     HOUR_TIP_LENGTH),
-                mHourPaint)
-            canvas.restore()
-
-            canvas.save()
-            canvas.rotate(minutesRotation, 0f, 0f)
-            canvas.drawPath(
-                handPath(
-                    MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, MINUTE_LENGTH,
-                    MINUTE_TIP_LENGTH),
-                mMinutePaint)
+                mHandFillPaint)
             canvas.restore()
 
             /*
@@ -541,17 +540,42 @@ class Annulus : CanvasWatchFaceService() {
             if (!mAmbient) {
                 canvas.save()
                 canvas.rotate(secondsRotation, 0f, 0f)
+                mHandStrokePaint.strokeWidth = SECOND_THICKNESS
                 canvas.drawLine(
                     0f, 0f,
                     0f, -SECOND_LENGTH,
-                    mSecondPaint
+                    mHandStrokePaint
                 )
                 canvas.restore()
             }
 
+            //TODO document thermometer stuff
+            mCirclePaint.color = WATCH_HAND_COLOR
             canvas.drawCircle(
                 0f, 0f,
                 CENTER_CIRCLE_RADIUS,
+                mCirclePaint
+            )
+
+            canvas.save()
+            canvas.rotate(minutesRotation, 0f, 0f)
+            mHandFillPaint.color = WATCH_HAND_THERMOMETER_COLOR
+            canvas.drawPath(
+                handPath(
+                    MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, minuteTemperatureLength, 0f),
+                mHandFillPaint)
+            mHandStrokePaint.strokeWidth = MINUTE_BORDER_THICKNESS
+            canvas.drawPath(
+                handPath(
+                    MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, MINUTE_LENGTH,
+                    MINUTE_TIP_LENGTH),
+                mHandStrokePaint)
+            canvas.restore()
+
+            mCirclePaint.color = WATCH_HAND_THERMOMETER_COLOR
+            canvas.drawCircle(
+                0f, 0f,
+                INNER_CIRCLE_RADIUS,
                 mCirclePaint
             )
 
