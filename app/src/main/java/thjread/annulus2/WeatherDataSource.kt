@@ -2,6 +2,7 @@ package thjread.annulus2
 
 import android.content.ContentResolver
 import android.content.Context
+import android.location.Location
 import android.text.format.DateUtils
 import android.util.Log
 
@@ -81,14 +82,20 @@ class WeatherDataSource(private val context: Context) {
      * avoid blocking the main (UI) thread.
      */
     private suspend fun fetchWeatherData(): WeatherService.WeatherData? = withContext(Dispatchers.Default) {
+        Log.d("Weather", "Fetching weather data")
         try {
-            val location = Tasks.await(mFusedLocationClient.lastLocation, 30, TimeUnit.SECONDS)
-            val call = mWeatherDataService.getWeatherData(sForecastAPIKey, location.latitude, location.longitude)
-            try {
-                val response = call.execute()
-                response.body()
-            } catch (e: IOException) {
-                Log.e("Weather", "Failed to get a response from Forecast API: ${e.message}")
+            val location: Location? = Tasks.await(mFusedLocationClient.lastLocation, 30, TimeUnit.SECONDS)
+            if (location != null) {
+                val call = mWeatherDataService.getWeatherData(sForecastAPIKey, location.latitude, location.longitude)
+                try {
+                    val response = call.execute()
+                    response.body()
+                } catch (e: IOException) {
+                    Log.e("Weather", "Failed to get a response from Forecast API: ${e.message}")
+                    null
+                }
+            } else {
+                Log.e("Weather", "Device has no last location")
                 null
             }
         } catch (e: ExecutionException) {

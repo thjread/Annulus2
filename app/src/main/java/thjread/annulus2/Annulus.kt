@@ -37,35 +37,40 @@ private const val INTERACTIVE_UPDATE_RATE_MS = 1000
  */
 private const val MSG_UPDATE_TIME = 0
 
-private const val MAJOR_TICK_THICKNESS = 0.02f
+private const val MAJOR_TICK_THICKNESS = 0.05f
 private const val MINOR_TICK_THICKNESS = 0.01f
-private const val OUTER_TICK_RADIUS = 0.9375f
-private const val MAJOR_TICK_LENGTH = 0.1875f
-private const val MINOR_TICK_LENGTH = 0.0625f
+private const val OUTER_TICK_RADIUS = 7.5f/8f
+private const val MAJOR_TICK_LENGTH = 1f/8f
+private const val MINOR_TICK_LENGTH = 0.5f/8f
 
-private const val HOUR_LENGTH = 0.5f
-private const val HOUR_THICKNESS = 0.08f
+private const val HOUR_LENGTH = 5f/8f
+private const val HOUR_BORDER_THICKNESS = 0.015f
+private const val HOUR_THICKNESS = 0.07f
 private const val HOUR_TIP_THICKNESS = 0.04f
 private const val HOUR_TIP_LENGTH = 0.04f
 
-private const val MINUTE_LENGTH = 0.75f
+private const val MINUTE_LENGTH = 7f/8f
 private const val MINUTE_BORDER_THICKNESS = 0.015f
-private const val MINUTE_THICKNESS = 0.05f
-private const val MINUTE_TIP_THICKNESS = 0.032f
+private const val MINUTE_THICKNESS = 0.06f
+private const val MINUTE_TIP_THICKNESS = 0.035f
 private const val MINUTE_TIP_LENGTH = 0.04f
 
-private const val SECOND_LENGTH = 0.875f
+private const val SECOND_LENGTH = 7f/8f
 private const val SECOND_THICKNESS = 0.02f
 
-private const val INNER_CIRCLE_RADIUS = 0.045f
 private const val CENTER_CIRCLE_RADIUS = 0.06f
+private const val INNER_CIRCLE_RADIUS = CENTER_CIRCLE_RADIUS - MINUTE_BORDER_THICKNESS
 
 // TODO move these to a values file
 private const val WATCH_HAND_COLOR = Color.WHITE
 private const val WATCH_HAND_HIGHLIGHT_COLOR = Color.WHITE // TODO: Do we actually want a highlight color?
-private const val WATCH_HAND_THERMOMETER_COLOR = Color.RED // TODO better color
-private val ZERO_DEGREES_COLOR = Color.rgb(93, 173, 226)
-private val FIVE_DEGREES_COLOR = Color.rgb(175, 122, 197)
+private val WATCH_HAND_THERMOMETER_COLOR = Color.rgb(255, 65, 54)
+private val WATCH_HAND_THERMOMETER_BACKGROUND_COLOR = Color.rgb(50, 50, 50)
+private val WATCH_HAND_BAROMETER_COLOR = Color.rgb(61, 153, 112)
+private val ZERO_DEGREES_COLOR = Color.rgb(127, 219, 255)
+private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)
+private const val ZERO_DEGREES_THICKNESS = 0.03f
+private const val FIVE_DEGREES_THICKNESS = 0.02f
 private const val BACKGROUND_COLOR = Color.BLACK
 private val CALENDAR_COLORS = listOf(
     Color.rgb(33, 150, 243),
@@ -133,8 +138,8 @@ class PermissionActivity() : Activity() {
     }
 }
 
-data class WatchfaceWeatherData (val currentTemperature: Double?) {
-    constructor(data: WeatherService.WeatherData?) : this(data?.currently?.temperature)
+data class WatchfaceWeatherData (val currentTemperature: Double?, val currentPressure: Double?) {
+    constructor(data: WeatherService.WeatherData?) : this(data?.currently?.temperature, data?.currently?.pressure)
 }
 
 /**
@@ -433,7 +438,7 @@ class Annulus : CanvasWatchFaceService() {
 
             mWeatherDataSource?.run{
                 Log.d("Annulus", mWeatherData.toString())
-                // TODO Minute hand as thermometer (-10 to 30?), maybe hour as barometer, second hand curve for wind
+                // TODO second hand curve for wind
                 updateWeatherDataIfStale()
             }
 
@@ -518,14 +523,40 @@ class Annulus : CanvasWatchFaceService() {
                 return p
             }
 
+            /*
+             * Draw hour hand, with a barometer-style green bar showing the current pressure.
+             */
+
             canvas.save()
             canvas.rotate(hoursRotation, 0f, 0f)
-            mHandFillPaint.color = WATCH_HAND_COLOR
+
+            /* Display pressures from 980 to 1040 hPa */
+            fun pressureToRatio(pressure: Double): Float =
+                (pressure.toFloat()-980f)/(1040f-980f)
+
+            val hourPressureLength = HOUR_LENGTH * if (weatherData.currentPressure != null) {
+                pressureToRatio(weatherData.currentPressure)
+            } else { 1f }// TODO better behaviour when data not available
+
+            val hourHandPath = handPath(
+                HOUR_THICKNESS, HOUR_TIP_THICKNESS, HOUR_LENGTH, HOUR_TIP_LENGTH)
+
+            /* Dark grey background. */
+            mHandFillPaint.color = WATCH_HAND_THERMOMETER_BACKGROUND_COLOR
+            canvas.drawPath(hourHandPath, mHandFillPaint)
+
+            /* Green to show the pressure. */
+            mHandFillPaint.color = WATCH_HAND_BAROMETER_COLOR
             canvas.drawPath(
                 handPath(
-                    HOUR_THICKNESS, HOUR_TIP_THICKNESS, HOUR_LENGTH,
-                    HOUR_TIP_LENGTH),
+                    HOUR_THICKNESS, HOUR_TIP_THICKNESS, hourPressureLength, 0f),
                 mHandFillPaint)
+
+            /* White border */
+            mHandStrokePaint.color = WATCH_HAND_COLOR
+            mHandStrokePaint.strokeWidth = HOUR_BORDER_THICKNESS
+            canvas.drawPath(hourHandPath, mHandStrokePaint)
+
             canvas.restore()
 
             /*
@@ -545,7 +576,13 @@ class Annulus : CanvasWatchFaceService() {
                 canvas.restore()
             }
 
-            //TODO document thermometer stuff
+
+            /*
+             * Draw minute hand, with a thermometer-style red bar showing the current temperature, and ticks at every
+             * 5 degrees Celsius.
+             */
+
+            /* Draw central circle */
             mCirclePaint.color = WATCH_HAND_COLOR
             canvas.drawCircle(
                 0f, 0f,
@@ -555,35 +592,49 @@ class Annulus : CanvasWatchFaceService() {
 
             canvas.save()
             canvas.rotate(minutesRotation, 0f, 0f)
-            fun temperatureToRatio(temperature: Double): Float = (temperature.toFloat()+10f)/(10f+30f)
+
+            /* Display temperatures from -10 to 30 degrees */
+            fun temperatureToRatio(temperature: Double): Float =
+                (temperature.toFloat()+10f)/(10f+30f)
+
             val minuteTemperatureLength = MINUTE_LENGTH * if (weatherData.currentTemperature != null) {
-                /* Display temperatures from -10 to 30 degrees */
                 temperatureToRatio(weatherData.currentTemperature)
-            } else { 1f }
+            } else { 1f } // TODO better behaviour when data not available
+
+            val minuteHandPath = handPath(
+                MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, MINUTE_LENGTH, MINUTE_TIP_LENGTH)
+
+            /* Dark grey background. */
+            mHandFillPaint.color = WATCH_HAND_THERMOMETER_BACKGROUND_COLOR
+            canvas.drawPath(minuteHandPath, mHandFillPaint)
+
+            /* Red to show the temperature. */
             mHandFillPaint.color = WATCH_HAND_THERMOMETER_COLOR
             canvas.drawPath(
                 handPath(
                     MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, minuteTemperatureLength, 0f),
                 mHandFillPaint)
-            //TODO use temperature to length function
+
+            /* Ticks every 5 degrees, with a more obvious tick for 0 Celsius. */
             for (temperature in -5..25 step 5){
                 mHandStrokePaint.color = if (temperature == 0) ZERO_DEGREES_COLOR else FIVE_DEGREES_COLOR
-                mHandStrokePaint.strokeWidth = MINUTE_BORDER_THICKNESS
+                mHandStrokePaint.strokeWidth = if (temperature == 0) ZERO_DEGREES_THICKNESS else FIVE_DEGREES_THICKNESS
                 val ratio = temperatureToRatio(temperature.toDouble())
-                val width = ratio*MINUTE_THICKNESS + (1-ratio)*MINUTE_TIP_THICKNESS + MINUTE_BORDER_THICKNESS
+                val width = (1-ratio)*MINUTE_THICKNESS + ratio*MINUTE_TIP_THICKNESS + MINUTE_BORDER_THICKNESS
                 canvas.drawLine(-width/2f, -ratio*MINUTE_LENGTH,
                     width/2f, -ratio*MINUTE_LENGTH,
                     mHandStrokePaint)
             }
+
+            /* White border */
             mHandStrokePaint.color = WATCH_HAND_COLOR
             mHandStrokePaint.strokeWidth = MINUTE_BORDER_THICKNESS
-            canvas.drawPath(
-                handPath(
-                    MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, MINUTE_LENGTH,
-                    MINUTE_TIP_LENGTH),
-                mHandStrokePaint)
+            canvas.drawPath(minuteHandPath, mHandStrokePaint)
+
             canvas.restore()
 
+            /* Red central circle ("mercury reservoir") */
+            // TODO shrink inner circle when temperature too low
             mCirclePaint.color = WATCH_HAND_THERMOMETER_COLOR
             canvas.drawCircle(
                 0f, 0f,
