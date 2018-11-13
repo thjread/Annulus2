@@ -423,6 +423,8 @@ class Annulus : CanvasWatchFaceService() {
 
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
 
+            mWeatherDataSource?.mWeatherData?.run{ drawWeather(canvas, now, this) }
+
             val watchfaceWeatherData = WatchfaceWeatherData(mWeatherDataSource?.mWeatherData)
             drawWatchFace(canvas, now, watchfaceWeatherData)
 
@@ -437,6 +439,13 @@ class Annulus : CanvasWatchFaceService() {
                 drawCalendar(canvas, now, nextHourCalendarData)
                 updateCalendarDataIfStale()
             }
+        }
+
+        /**
+         * Draw a ring representing the next 11 hours of weather
+         */
+        private fun drawWeather(canvas: Canvas, now: Long, weatherData: WeatherService.WeatherData) {
+
         }
 
         /**
