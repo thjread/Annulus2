@@ -70,7 +70,7 @@ private val WATCH_HAND_THERMOMETER_COLOR = Color.rgb(255, 65, 54)
 private val WATCH_HAND_THERMOMETER_BACKGROUND_COLOR = Color.rgb(50, 50, 50)
 private val WATCH_HAND_BAROMETER_COLOR = Color.rgb(61, 153, 112)
 private val ZERO_DEGREES_COLOR = Color.rgb(127, 219, 255)
-private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)
+private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)// TODO rename? since used for ticks
 private const val ZERO_DEGREES_THICKNESS = 0.03f
 private const val FIVE_DEGREES_THICKNESS = 0.02f
 private const val BACKGROUND_COLOR = Color.BLACK
@@ -423,22 +423,22 @@ class Annulus : CanvasWatchFaceService() {
 
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
 
-            mWeatherDataSource?.mWeatherData?.run{ drawWeather(canvas, now, this) }
-
-            val watchfaceWeatherData = WatchfaceWeatherData(mWeatherDataSource?.mWeatherData)
-            drawWatchFace(canvas, now, watchfaceWeatherData)
-
-            mWeatherDataSource?.run{
-                Log.d("Annulus", mWeatherData.toString())
-                updateWeatherDataIfStale()
+            mWeatherDataSource?.mWeatherData?.run{
+                Log.d("Annulus", this.toString())
+                drawWeather(canvas, now, this)
             }
-
             mCalendarDataSource?.run{
                 val nextHourCalendarData = nextHourCalendarData(now)
                 Log.d("Annulus", nextHourCalendarData.toString())
                 drawCalendar(canvas, now, nextHourCalendarData)
-                updateCalendarDataIfStale()
             }
+
+            val watchfaceWeatherData = WatchfaceWeatherData(mWeatherDataSource?.mWeatherData)
+            drawWatchFace(canvas, now, watchfaceWeatherData)
+
+            mWeatherDataSource?.run{ updateWeatherDataIfStale() }
+
+            mCalendarDataSource?.run{ updateCalendarDataIfStale() }
         }
 
         /**
@@ -485,9 +485,11 @@ class Annulus : CanvasWatchFaceService() {
                 var tickLength: Float
                 if (tickIndex % 5 == 0) {
                     tickLength = MAJOR_TICK_LENGTH
+                    mTickPaint.color = WATCH_HAND_COLOR
                     mTickPaint.strokeWidth = MAJOR_TICK_THICKNESS
                 } else {
                     tickLength = MINOR_TICK_LENGTH
+                    mTickPaint.color = FIVE_DEGREES_COLOR
                     mTickPaint.strokeWidth = MINOR_TICK_THICKNESS
                 }
                 val tickRot = (tickIndex.toDouble() * Math.PI * 2.0 / 60)
