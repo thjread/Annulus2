@@ -586,9 +586,9 @@ class Annulus : CanvasWatchFaceService() {
                     val sweepAngle = 4*atan(2*displacement)
                     val radius = 1/(2*sin(0.5f*sweepAngle))
                     val sweepDegrees = sweepAngle * 180f/PI.toFloat()
-                    canvas.drawArc(RectF(-displacement*SECOND_LENGTH, -(0.5f+radius)*SECOND_LENGTH,
-                        (2*radius-displacement)*SECOND_LENGTH, -(0.5f-radius)*SECOND_LENGTH),
-                        180-sweepDegrees/2f, sweepDegrees, false, mHandStrokePaint)
+                    canvas.drawArc(RectF((-2*radius+displacement)*SECOND_LENGTH, -(0.5f+radius)*SECOND_LENGTH,
+                        displacement*SECOND_LENGTH, -(0.5f-radius)*SECOND_LENGTH),
+                        -sweepDegrees/2f, sweepDegrees, false, mHandStrokePaint)
                 } else {
                     canvas.drawLine(
                         0f, 0f,
