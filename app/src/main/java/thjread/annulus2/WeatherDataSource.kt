@@ -10,9 +10,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.tasks.Tasks
+import com.squareup.moshi.JsonDataException
+import retrofit2.converter.moshi.MoshiConverterFactory
 
 import thjread.annulus.WeatherService
 import java.io.IOException
@@ -31,7 +32,7 @@ class WeatherDataSource(private val context: Context) {
 
     private val mWeatherDataService = Retrofit.Builder()
         .baseUrl("https://api.forecast.io")
-        .addConverterFactory(GsonConverterFactory.create())
+        .addConverterFactory(MoshiConverterFactory.create())
         .client(OkHttpClient())
         .build().create(WeatherService::class.java)
 
@@ -91,7 +92,10 @@ class WeatherDataSource(private val context: Context) {
                     val response = call.execute()
                     response.body()
                 } catch (e: IOException) {
-                    Log.e("Weather", "Failed to get a response from Forecast API: ${e.message}")
+                    Log.e("Weather", "Failed to get a well-formed response from Forecast API: ${e.message}")
+                    null
+                } catch (e: JsonDataException) {
+                    Log.e("Weather", "JSON data from Forecast API did not fit expected format: ${e.message}")
                     null
                 }
             } else {

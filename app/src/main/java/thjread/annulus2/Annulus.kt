@@ -144,6 +144,8 @@ data class WatchfaceWeatherData (val currentTemperature: Double?, val currentPre
     constructor(data: WeatherService.WeatherData?) : this(data?.currently?.temperature, data?.currently?.pressure, data?.currently?.windSpeed)
 }
 
+data class WeatherRingSegment (val begin: Long, val end: Long, val thickness: Float, val color: Int)
+
 /**
  * Analog watch face with a ticking second hand. In ambient mode, the second hand isn't
  * shown. On devices with low-bit ambient mode, the hands are drawn without anti-aliasing in ambient
@@ -445,7 +447,22 @@ class Annulus : CanvasWatchFaceService() {
          * Draw a ring representing the next 11 hours of weather
          */
         private fun drawWeather(canvas: Canvas, now: Long, weatherData: WeatherService.WeatherData) {
+            fun weatherRingSegments(now: Long, weatherData: WeatherService.WeatherData): List<WeatherRingSegment> {
+                if (weatherData.hourly != null) {
+                    for (datum in weatherData.hourly.data) {
+                        val begin = datum.time
+                    }
+                }
+                val segments: List<WeatherRingSegment> = listOf()
+                return segments
+            }
 
+            fun drawWeatherRingSegments(canvas: Canvas, segments: List<WeatherRingSegment>) {
+
+            }
+
+            val segments = weatherRingSegments(now, weatherData)
+            drawWeatherRingSegments(canvas, segments)
         }
 
         /**

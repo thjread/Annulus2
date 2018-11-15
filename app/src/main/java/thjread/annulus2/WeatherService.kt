@@ -1,10 +1,9 @@
 package thjread.annulus
 
-import java.util.ArrayList
-
 import retrofit2.Call
 import retrofit2.http.GET
 import retrofit2.http.Path
+import com.squareup.moshi.JsonClass
 
 interface WeatherService {
     @GET("forecast/{api_key}/{latitude},{longitude}?units=si")
@@ -14,6 +13,7 @@ interface WeatherService {
         @Path("longitude") longitude: Double
     ): Call<WeatherData>
 
+    @JsonClass(generateAdapter = true)
     data class Daily(
         val summary: String?,
         val icon: String?,
