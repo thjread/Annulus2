@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 
 private const val WEATHER_UPDATE_FREQUENCY: Long = 10*DateUtils.MINUTE_IN_MILLIS
 // TODO Update more frequently when raining
+// TODO Add rate limiting if updates fail
 
 class WeatherDataSource(private val context: Context) {
 

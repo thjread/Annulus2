@@ -14,74 +14,60 @@ interface WeatherService {
     ): Call<WeatherData>
 
     @JsonClass(generateAdapter = true)
-    data class Daily(
+    data class DataBlock(
+        val data: List<Datum>,
         val summary: String?,
-        val icon: String?,
-        val data: List<Datum>
+        val icon: String?
     )
 
-    data class Hourly(
-        val summary: String?,
-        val icon: String?,
-        val data: List<Datum>
-    )
-
-    data class Minutely(
-        val summary: String?,
-        val icon: String?,
-        val data: List<Datum>
-    )
-
+    @JsonClass(generateAdapter = true)
     data class Datum(
-        val time: Int?,
+        val time: Long,
         val summary: String?,
         val icon: String?,
-        val sunriseTime: Int?,
-        val sunsetTime: Int?,
+        val sunriseTime: Long?,
+        val sunsetTime: Long?,
         val moonPhase: Double?,
+        val precipAccumulation: Double?,
         val precipIntensity: Double?,
+        val precipIntensityError: Double?,
         val precipIntensityMax: Double?,
-        val precipIntensityMaxTime: Int?,
+        val precipIntensityMaxTime: Long?,
         val precipProbability: Double?,
         val precipType: String?,
         val temperature: Double?,
-        val temperatureMin: Double?,
-        val temperatureMinTime: Int?,
-        val temperatureMax: Double?,
-        val temperatureMaxTime: Int?,
-        val apparentTemperatureMin: Double?,
-        val apparentTemperatureMinTime: Int?,
-        val apparentTemperatureMax: Double?,
-        val apparentTemperatureMaxTime: Int?,
+        val temperatureLow: Double?,
+        val temperatureLowTime: Long?,
+        val temperatureHigh: Double?,
+        val temperatureHighTime: Long?,
+        val apparentTemperatureLow: Double?,
+        val apparentTemperatureLowTime: Long?,
+        val apparentTemperatureHigh: Double?,
+        val apparentTemperatureHighTime: Long?,
         val dewPoint: Double?,
         val humidity: Double?,
         val windSpeed: Double?,
-        val windBearing: Int?,
+        val windBearing: Double?,
+        val windGust: Double?,
+        val windGustTime: Long?,
         val visibility: Double?,
         val cloudCover: Double?,
         val pressure: Double?,
-        val ozone: Double?
+        val ozone: Double?,
+        val nearestStormBearing: Double?,
+        val nearestStormDistance: Double?,
+        val uvIndex: Double?,
+        val uvIndexTime: Long?
     )
 
-    data class Flags(
-        val sources: List<String>,
-        val darkskyStations: List<String>,
-        val datapointStations: List<String>,
-        val metnoLicense: String?,
-        val isdStations: List<String>,
-        val madisStations: List<String>,
-        val units: String?
-    )
-
+    @JsonClass(generateAdapter = true)
     data class WeatherData(
-        val latitude: Double?,
-        val longitude: Double?,
-        val timezone: String?,
-        val offset: Int?,
+        val latitude: Double,
+        val longitude: Double,
+        val timezone: String,
         val currently: Datum?,
-        val minutely: Minutely?,
-        val hourly: Hourly?,
-        val daily: Daily?,
-        val flags: Flags?
+        val minutely: DataBlock?,
+        val hourly: DataBlock?,
+        val daily: DataBlock?
     )
 }
