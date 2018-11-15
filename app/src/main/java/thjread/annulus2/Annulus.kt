@@ -27,6 +27,7 @@ import java.util.Calendar
 import java.util.TimeZone
 import kotlin.math.PI
 import kotlin.math.atan
+import kotlin.math.cos
 import kotlin.math.sin
 
 /**
@@ -84,6 +85,19 @@ private const val CALENDAR_THICKNESS = 0.02f
 private const val CALENDAR_RADIUS = 0.75f
 private const val CALENDAR_TEXT_SIZE = 0.18f
 private val CALENDAR_TEXT_HEIGHTS = listOf(0.5f, 0.25f)
+
+private const val WEATHER_RING_THICKNESS = 0.03f
+private const val WEATHER_RING_MAX_THICKNESS = 2f/8f
+private const val WEATHER_RING_RADIUS = 3f/8f
+private const val MAX_RAIN = 8f
+private const val MIN_DISPLAY_PRECIP = 0.09f
+
+private val RAIN_COLOR = Color.rgb(100, 181, 246)
+private val DARK_RAIN_COLOR = Color.rgb(13, 71, 161)
+private val CLEAR_COLOR = Color.rgb(255, 213, 79)
+private val CLOUD_COLOR = Color.WHITE
+private val DARK_CLEAR_COLOR = Color.rgb(66, 66, 66)
+private val DARK_CLOUD_COLOR = Color.rgb(158, 158, 158)
 
 /**
  * Code to tell ResultReceiver that calendar permission is granted, and key to pass ResultReceiver in Intent.
@@ -144,7 +158,8 @@ data class WatchfaceWeatherData (val currentTemperature: Double?, val currentPre
     constructor(data: WeatherService.WeatherData?) : this(data?.currently?.temperature, data?.currently?.pressure, data?.currently?.windSpeed)
 }
 
-data class WeatherRingSegment (val begin: Long, val end: Long, val thickness: Float, val color: Int)
+data class WeatherRingSegment (val startAngle: Float, val sweepAngle: Float, val precipExpectation: Float, val cloudCover: Float, val day: Boolean)
+// TODO precipProbability or precipIntensityError?
 
 /**
  * Analog watch face with a ticking second hand. In ambient mode, the second hand isn't
@@ -447,18 +462,143 @@ class Annulus : CanvasWatchFaceService() {
          * Draw a ring representing the next 11 hours of weather
          */
         private fun drawWeather(canvas: Canvas, now: Long, weatherData: WeatherService.WeatherData) {
+
+            /*
+             * Processes weather data to produce start times, end times and display attributes (color, thickness).
+             */
             fun weatherRingSegments(now: Long, weatherData: WeatherService.WeatherData): List<WeatherRingSegment> {
-                if (weatherData.hourly != null) {
-                    for (datum in weatherData.hourly.data) {
-                        val begin = datum.time
+                val sunriseOrSunsets: MutableList<Pair<Long, Boolean>> = mutableListOf() // (time, isSunrise)
+                if (weatherData.daily != null) {
+                    for (datum in weatherData.daily.data) {
+                        datum.sunriseTime?.let {
+                            sunriseOrSunsets.add(Pair(it*DateUtils.SECOND_IN_MILLIS, true))
+                        }
+                        datum.sunsetTime?.let {
+                            sunriseOrSunsets.add(Pair(it*DateUtils.SECOND_IN_MILLIS, false))
+                        }
                     }
                 }
-                val segments: List<WeatherRingSegment> = listOf()
+
+                Log.d("WeatherRing", sunriseOrSunsets.toString())
+
+                fun createWeatherRingSegment(begin: Long, end: Long, datum: WeatherService.Datum, day: Boolean): WeatherRingSegment {
+                    val precipExpectation = if (datum.precipProbability != null && datum.precipIntensity != null) {
+                        (datum.precipProbability * datum.precipIntensity).toFloat()
+                    } else {
+                        0f
+                    }
+
+                    val cloudCover = datum.cloudCover?.toFloat() ?: 0.0f
+
+                    mCalendar.timeInMillis = begin
+                    val startAngle = hourAngle(mCalendar)
+
+                    mCalendar.timeInMillis = end
+                    val endAngle = hourAngle(mCalendar)
+                    val sweepAngle = (endAngle + 360 - startAngle) % 360
+
+                    return WeatherRingSegment(startAngle, sweepAngle, precipExpectation, cloudCover, day)
+                }
+
+                val segments: MutableList<WeatherRingSegment> = mutableListOf()
+                if (weatherData.hourly != null) {
+                    for (datum in weatherData.hourly.data) {
+                        var begin = datum.time * DateUtils.SECOND_IN_MILLIS
+                        var end = begin + DateUtils.HOUR_IN_MILLIS
+
+                        /*
+                         * Only take data for the next 11 hours, and clip the segment edges to lie in this interval.
+                         */
+                        if (end < now || begin > now + 11*DateUtils.HOUR_IN_MILLIS) {
+                            break
+                        }
+                        if (begin < now) {
+                            begin = now
+                        }
+                        if (end > now + 11*DateUtils.HOUR_IN_MILLIS) {
+                            end = now + 11*DateUtils.HOUR_IN_MILLIS
+                        }
+
+                        /*
+                         * binarySearch returns the index of the element matching the key if it's found exactly, or
+                         * otherwise -i-1 where i is the index at which the key could be inserted to maintain sorted
+                         * order.
+                         */
+                        val sunIndex = sunriseOrSunsets.binarySearchBy(begin, selector={ p -> p.first })
+                        val previousSun = sunriseOrSunsets.getOrNull(if (sunIndex >= 0) { sunIndex } else { -sunIndex-2 })
+                        val nextSun = sunriseOrSunsets.getOrNull(if (sunIndex >= 0) { sunIndex + 1} else { -sunIndex-1 })
+
+                        // TODO check this logic
+                        if (nextSun != null && nextSun.first > begin && nextSun.first <= end) {
+                            val split = nextSun.first
+                            segments.add(createWeatherRingSegment(begin, split, datum, !nextSun.second))
+                            segments.add(createWeatherRingSegment(split, end, datum, nextSun.second))
+                        } else {
+                            val day = previousSun?.second ?: (nextSun?.second?.not() ?: true)
+                            segments.add(createWeatherRingSegment(begin, end, datum, day))
+                        }
+                    }
+                }
+                Log.d("WeatherRing", segments.toString())
+
                 return segments
             }
 
+            /*
+             * Draws weather data segments in a ring.
+             */
             fun drawWeatherRingSegments(canvas: Canvas, segments: List<WeatherRingSegment>) {
 
+                fun interpolateColor(a: Int, b:  Int, ratio: Float): Int {
+                    val r = (Color.red(a)*ratio + Color.red(b)*(1f-ratio)).toInt()
+                    val g = (Color.green(a)*ratio + Color.green(b)*(1f-ratio)).toInt()
+                    val b = (Color.blue(a)*ratio + Color.blue(b)*(1f-ratio)).toInt()
+                    return Color.rgb(r, g, b)
+                }
+
+                /*
+                 * Draw an arc starting at vertical and going clockwise by sweepAngle, between innerRadius and outerRadius.
+                 */
+                fun arcPath(startAngle: Float, sweepAngle: Float, innerRadius: Float, outerRadius: Float): Path {
+                    val p = Path()
+                    /* Angle measured from x axis rather than y axis, so subtract 90 degrees */
+                    p.arcTo(RectF(-outerRadius, -outerRadius, outerRadius, outerRadius),
+                        startAngle-90f, sweepAngle)
+                    p.arcTo(RectF(-innerRadius, -innerRadius, innerRadius, innerRadius),
+                        startAngle+sweepAngle-90, -sweepAngle)
+                    p.close()
+                    return p
+                }
+
+                /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
+                canvas.save()
+                canvas.translate(mCenterX, mCenterY)
+                canvas.scale(mRadius, mRadius, 0f, 0f)
+
+                for (segment in segments) {
+                    var thickness = WEATHER_RING_THICKNESS
+                    var color = 0
+                    //val len = WEATHER_RING_THICKNESS
+
+                    if (segment.precipExpectation >= MIN_DISPLAY_PRECIP) {
+                        thickness = WEATHER_RING_THICKNESS +
+                                (WEATHER_RING_MAX_THICKNESS-WEATHER_RING_THICKNESS) * segment.precipExpectation / MAX_RAIN
+                        color = if (segment.day) { RAIN_COLOR } else { DARK_RAIN_COLOR }
+                    } else {
+                        color = if (segment.day) {
+                            interpolateColor(CLOUD_COLOR, CLEAR_COLOR, segment.cloudCover)
+                        } else {
+                            interpolateColor(DARK_CLOUD_COLOR, DARK_CLEAR_COLOR, segment.cloudCover)
+                        }
+                    }
+                    val path = arcPath(segment.startAngle, segment.sweepAngle,
+                        WEATHER_RING_RADIUS-thickness/2f,
+                        WEATHER_RING_RADIUS+thickness/2f)
+                    mHandFillPaint.color = color // TODO rename this paint and maybe merge with others?
+                    canvas.drawPath(path, mHandFillPaint)
+                }
+
+                canvas.restore()
             }
 
             val segments = weatherRingSegments(now, weatherData)
@@ -691,7 +831,6 @@ class Annulus : CanvasWatchFaceService() {
                 )
             }
 
-            /* Restore the canvas' original orientation. */
             canvas.restore()
         }
 
