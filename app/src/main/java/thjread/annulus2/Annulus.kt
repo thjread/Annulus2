@@ -100,6 +100,9 @@ private val CLOUD_COLOR = Color.WHITE
 private val DARK_CLEAR_COLOR = Color.rgb(66, 66, 66)
 private val DARK_CLOUD_COLOR = Color.rgb(158, 158, 158)
 
+private const val RAIN_TICKS_THRESHOLD = 0.12
+private const val RAIN_TICK_MAX_LENGTH = OUTER_TICK_RADIUS
+
 /**
  * Code to tell ResultReceiver that calendar permission is granted, and key to pass ResultReceiver in Intent.
  */
@@ -155,8 +158,69 @@ class PermissionActivity() : Activity() {
     }
 }
 
-data class WatchfaceWeatherData (val currentTemperature: Double?, val currentPressure: Double?, val currentWindSpeed: Double?) {
-    constructor(data: WeatherService.WeatherData?) : this(data?.currently?.temperature, data?.currently?.pressure, data?.currently?.windSpeed)
+/**
+ * Utility function for interpolating between two colors.
+ */
+private fun interpolateColor(a: Int, b:  Int, ratio: Float): Int {
+    val r = (Color.red(a)*ratio + Color.red(b)*(1f-ratio)).toInt()
+    val g = (Color.green(a)*ratio + Color.green(b)*(1f-ratio)).toInt()
+    val b = (Color.blue(a)*ratio + Color.blue(b)*(1f-ratio)).toInt()
+    return Color.rgb(r, g, b)
+}
+
+/**
+ * Weather data which is passed to the watchface drawing function.
+ * tickParams contains a list of (length, color)
+ */
+data class WatchfaceWeatherData (val currentTemperature: Double?, val currentPressure: Double?,
+                                 val currentWindSpeed: Double?, val tickParams: List<Pair<Float, Int>>?) {
+    companion object {
+        fun fromWeatherData(data: WeatherService.WeatherData?, now: Long, calendar: Calendar): WatchfaceWeatherData {
+            val tickParams = MutableList(60) { Pair(0f, FIVE_DEGREES_COLOR) }
+
+            /* Only pass tickParams if there is sufficient rain in the next hour */
+            // TODO also check sufficient data available
+            var showRain = false
+            if (data?.minutely != null) {
+
+                calendar.timeInMillis = now
+                val currentMinute = calendar.get(Calendar.MINUTE)
+
+                for (datum in data.minutely.data) {
+                    val time = datum.time*DateUtils.SECOND_IN_MILLIS
+                    if (time <= now || time > now + DateUtils.HOUR_IN_MILLIS) {
+                        continue
+                    }
+
+                    calendar.timeInMillis = time
+                    val minute = calendar.get(Calendar.MINUTE)
+                    val precipProbability = datum.precipProbability ?: 0.0
+                    val precipExpectation = datum.precipIntensity?.times(precipProbability) ?: 0.0
+
+                    if (precipExpectation >= RAIN_TICKS_THRESHOLD) {
+                        showRain = true
+                    }
+                    val length = minOf(MINOR_TICK_LENGTH +
+                            RAIN_TICK_MAX_LENGTH * precipExpectation.toFloat() / MAX_RAIN,
+                        OUTER_TICK_RADIUS)
+                    val minutesFromNow = (minute+60-currentMinute) % 60
+                    /* Shrink the last few minutes of the hour to show clearly that they represent the future and not
+                     * the past.
+                     */
+                    val lengthMultiplier = when {
+                        minutesFromNow >= 56 ->  (4f-(minutesFromNow.toFloat()-56f))/4f
+                        minutesFromNow == 0 -> 0f
+                        else -> 1f
+                    }
+                    val color = interpolateColor(RAIN_COLOR, FIVE_DEGREES_COLOR, precipProbability.toFloat())
+                    tickParams[minute] = Pair(length*lengthMultiplier, color)
+                }
+            }
+
+            return WatchfaceWeatherData(data?.currently?.temperature, data?.currently?.pressure,
+                data?.currently?.windSpeed, if (showRain) { tickParams } else { null })
+        }
+    }
 }
 
 data class WeatherRingSegment (val startAngle: Float, val sweepAngle: Float, val precipExpectation: Float, val cloudCover: Float, val day: Boolean)
@@ -451,7 +515,8 @@ class Annulus : CanvasWatchFaceService() {
                 drawCalendar(canvas, now, nextHourCalendarData)
             }
 
-            val watchfaceWeatherData = WatchfaceWeatherData(mWeatherDataSource?.mWeatherData)
+            val watchfaceWeatherData =
+                WatchfaceWeatherData.fromWeatherData(mWeatherDataSource?.mWeatherData, now, mCalendar)
             drawWatchFace(canvas, now, watchfaceWeatherData)
 
             mWeatherDataSource?.run{ updateWeatherDataIfStale() }
@@ -552,13 +617,6 @@ class Annulus : CanvasWatchFaceService() {
              */
             fun drawWeatherRingSegments(canvas: Canvas, segments: List<WeatherRingSegment>) {
 
-                fun interpolateColor(a: Int, b:  Int, ratio: Float): Int {
-                    val r = (Color.red(a)*ratio + Color.red(b)*(1f-ratio)).toInt()
-                    val g = (Color.green(a)*ratio + Color.green(b)*(1f-ratio)).toInt()
-                    val b = (Color.blue(a)*ratio + Color.blue(b)*(1f-ratio)).toInt()
-                    return Color.rgb(r, g, b)
-                }
-
                 /*
                  * Draw an arc starting at vertical and going clockwise by sweepAngle, between innerRadius and outerRadius.
                  */
@@ -649,11 +707,11 @@ class Annulus : CanvasWatchFaceService() {
                 var tickLength: Float
                 if (tickIndex % 5 == 0) {
                     tickLength = MAJOR_TICK_LENGTH
-                    mTickPaint.color = WATCH_HAND_COLOR
+                    mTickPaint.color = weatherData.tickParams?.get(tickIndex)?.second ?: WATCH_HAND_COLOR
                     mTickPaint.strokeWidth = MAJOR_TICK_THICKNESS
                 } else {
-                    tickLength = MINOR_TICK_LENGTH
-                    mTickPaint.color = FIVE_DEGREES_COLOR
+                    tickLength = weatherData.tickParams?.get(tickIndex)?.first ?: MINOR_TICK_LENGTH
+                    mTickPaint.color = weatherData.tickParams?.get(tickIndex)?.second ?: FIVE_DEGREES_COLOR
                     mTickPaint.strokeWidth = MINOR_TICK_THICKNESS
                 }
                 val tickRot = (tickIndex.toDouble() * Math.PI * 2.0 / 60)
