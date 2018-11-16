@@ -75,6 +75,7 @@ private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)// TODO rename? since u
 private const val ZERO_DEGREES_THICKNESS = 0.03f
 private const val FIVE_DEGREES_THICKNESS = 0.02f
 private const val BACKGROUND_COLOR = Color.BLACK
+private val BACKGROUND_COLOR_LIGHT = Color.rgb(22, 22, 22)
 private val CALENDAR_COLORS = listOf(
     Color.rgb(33, 150, 243),
     Color.rgb(171, 71, 188),
@@ -505,6 +506,8 @@ class Annulus : CanvasWatchFaceService() {
 
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
 
+            drawBackground(canvas)
+
             mWeatherDataSource?.mWeatherData?.run{
                 Log.d("Annulus", this.toString())
                 drawWeather(canvas, now, this)
@@ -522,6 +525,31 @@ class Annulus : CanvasWatchFaceService() {
             mWeatherDataSource?.run{ updateWeatherDataIfStale() }
 
             mCalendarDataSource?.run{ updateCalendarDataIfStale() }
+        }
+
+        /**
+         * Draw concentric circles in the background (for decoration, and to show temperature scale).
+         */
+        private fun drawBackground (canvas: Canvas) {
+            fun annulusPath(innerRadius: Float, outerRadius: Float): Path {
+                val p = Path()
+                p.addCircle(0f, 0f, outerRadius, Path.Direction.CW)
+                p.addCircle(0f, 0f, innerRadius, Path.Direction.CCW)
+                return p
+            }
+
+            /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
+            canvas.save()
+            canvas.translate(mCenterX, mCenterY)
+            canvas.scale(mRadius, mRadius, 0f, 0f)
+
+            for (i in 1 until 8 step 2) {
+                val annulusPath = annulusPath(i*1f/8f, (i+1)*1f/8f)
+                mHandFillPaint.color = BACKGROUND_COLOR_LIGHT
+                canvas.drawPath(annulusPath, mHandFillPaint)
+            }
+
+            canvas.restore()
         }
 
         /**
