@@ -89,6 +89,7 @@ private val CALENDAR_TEXT_HEIGHTS = listOf(0.5f, 0.25f)
 private const val WEATHER_RING_THICKNESS = 0.03f
 private const val WEATHER_RING_MAX_THICKNESS = 2f/8f
 private const val WEATHER_RING_RADIUS = 3f/8f
+private const val ARC_EPSILON = 0.8f
 private const val MAX_RAIN = 8f
 private const val MIN_DISPLAY_PRECIP = 0.09f
 
@@ -464,7 +465,8 @@ class Annulus : CanvasWatchFaceService() {
         private fun drawWeather(canvas: Canvas, now: Long, weatherData: WeatherService.WeatherData) {
 
             /*
-             * Processes weather data to produce start times, end times and display attributes (color, thickness).
+             * Processes weather data to produce start angles, sweep angles, and weather data necessary for display
+             * (precipitation, cloud cover, day/night).
              */
             fun weatherRingSegments(now: Long, weatherData: WeatherService.WeatherData): List<WeatherRingSegment> {
                 val sunriseOrSunsets: MutableList<Pair<Long, Boolean>> = mutableListOf() // (time, isSunrise)
@@ -478,8 +480,6 @@ class Annulus : CanvasWatchFaceService() {
                         }
                     }
                 }
-
-                Log.d("WeatherRing", sunriseOrSunsets.toString())
 
                 fun createWeatherRingSegment(begin: Long, end: Long, datum: WeatherService.Datum, day: Boolean): WeatherRingSegment {
                     val precipExpectation = if (datum.precipProbability != null && datum.precipIntensity != null) {
@@ -528,8 +528,12 @@ class Annulus : CanvasWatchFaceService() {
                         val previousSun = sunriseOrSunsets.getOrNull(if (sunIndex >= 0) { sunIndex } else { -sunIndex-2 })
                         val nextSun = sunriseOrSunsets.getOrNull(if (sunIndex >= 0) { sunIndex + 1} else { -sunIndex-1 })
 
-                        // TODO check this logic
-                        if (nextSun != null && nextSun.first > begin && nextSun.first <= end) {
+                        /*
+                         * If day/night changes during the hour, create two segments.
+                         * If not, decide whether it's day or night based on the previous change, or otherwise based on
+                         * the next change, or otherwise assuming day if no data is available.
+                         */
+                        if (nextSun != null && nextSun.first <= end) {
                             val split = nextSun.first
                             segments.add(createWeatherRingSegment(begin, split, datum, !nextSun.second))
                             segments.add(createWeatherRingSegment(split, end, datum, nextSun.second))
@@ -539,13 +543,12 @@ class Annulus : CanvasWatchFaceService() {
                         }
                     }
                 }
-                Log.d("WeatherRing", segments.toString())
 
                 return segments
             }
 
             /*
-             * Draws weather data segments in a ring.
+             * Draws hourly weather in a ring, calculating colour and thickness from the given weather data.
              */
             fun drawWeatherRingSegments(canvas: Canvas, segments: List<WeatherRingSegment>) {
 
@@ -591,7 +594,11 @@ class Annulus : CanvasWatchFaceService() {
                             interpolateColor(DARK_CLOUD_COLOR, DARK_CLEAR_COLOR, segment.cloudCover)
                         }
                     }
-                    val path = arcPath(segment.startAngle, segment.sweepAngle,
+
+                    /* Add an extra ARC_EPSILON*WEATHER_RING_RADIUS to make sure segments overlap very slightly and avoid minor artefacts */
+                    val path = arcPath(
+                        segment.startAngle-ARC_EPSILON*WEATHER_RING_RADIUS,
+                        segment.sweepAngle+2*ARC_EPSILON*WEATHER_RING_RADIUS,
                         WEATHER_RING_RADIUS-thickness/2f,
                         WEATHER_RING_RADIUS+thickness/2f)
                     mHandFillPaint.color = color // TODO rename this paint and maybe merge with others?
