@@ -43,23 +43,23 @@ private const val MSG_UPDATE_TIME = 0
 
 private const val MAJOR_TICK_THICKNESS = 0.05f
 private const val MINOR_TICK_THICKNESS = 0.01f
-private const val OUTER_TICK_RADIUS = 7.5f/8f
-private const val MAJOR_TICK_LENGTH = 1f/8f
-private const val MINOR_TICK_LENGTH = 0.5f/8f
+private const val OUTER_TICK_RADIUS = 8.5f/9f
+private const val MAJOR_TICK_LENGTH = 1f/9f
+private const val MINOR_TICK_LENGTH = 0.5f/9f
 
-private const val HOUR_LENGTH = 5f/8f
+private const val HOUR_LENGTH = 5f/9f
 private const val HOUR_BORDER_THICKNESS = 0.015f
 private const val HOUR_THICKNESS = 0.07f
 private const val HOUR_TIP_THICKNESS = 0.04f
 private const val HOUR_TIP_LENGTH = 0.04f
 
-private const val MINUTE_LENGTH = 7f/8f
+private const val MINUTE_LENGTH = 8f/9f
 private const val MINUTE_BORDER_THICKNESS = 0.015f
 private const val MINUTE_THICKNESS = 0.06f
 private const val MINUTE_TIP_THICKNESS = 0.035f
 private const val MINUTE_TIP_LENGTH = 0.04f
 
-private const val SECOND_LENGTH = 7f/8f
+private const val SECOND_LENGTH = 8f/9f
 private const val SECOND_THICKNESS = 0.02f
 
 private const val CENTER_CIRCLE_RADIUS = 0.06f
@@ -83,13 +83,13 @@ private val CALENDAR_COLORS = listOf(
 private const val CALENDAR_GAP_MINUTES = 1.5
 
 private const val CALENDAR_THICKNESS = 0.02f
-private const val CALENDAR_RADIUS = 0.75f
+private const val CALENDAR_RADIUS = 7f/9f
 private const val CALENDAR_TEXT_SIZE = 0.18f
-private val CALENDAR_TEXT_HEIGHTS = listOf(0.5f, 0.25f)
+private val CALENDAR_TEXT_HEIGHTS = listOf(4f/9f, 2f/9f)
 
 private const val WEATHER_RING_THICKNESS = 0.03f
-private const val WEATHER_RING_MAX_THICKNESS = 2f/8f
-private const val WEATHER_RING_RADIUS = 3f/8f
+private const val WEATHER_RING_MAX_THICKNESS = 2f/9f
+private const val WEATHER_RING_RADIUS = 4f/9f
 private const val ARC_EPSILON = 0.8f
 private const val MAX_RAIN = 8f
 private const val MIN_DISPLAY_PRECIP = 0.09f
@@ -543,8 +543,8 @@ class Annulus : CanvasWatchFaceService() {
             canvas.translate(mCenterX, mCenterY)
             canvas.scale(mRadius, mRadius, 0f, 0f)
 
-            for (i in 1 until 8 step 2) {
-                val annulusPath = annulusPath(i*1f/8f, (i+1)*1f/8f)
+            for (i in 0 until 9 step 2) {
+                val annulusPath = annulusPath(i*1f/9f, (i+1)*1f/9f)
                 mHandFillPaint.color = BACKGROUND_COLOR_LIGHT
                 canvas.drawPath(annulusPath, mHandFillPaint)
             }
