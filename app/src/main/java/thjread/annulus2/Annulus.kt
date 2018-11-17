@@ -41,11 +41,24 @@ private const val INTERACTIVE_UPDATE_RATE_MS = 1000
  */
 private const val MSG_UPDATE_TIME = 0
 
+/**
+ * Colors and dimensions for the watchface
+ */
+// TODO move these to a values file
+private const val BACKGROUND_COLOR = Color.BLACK
+private val BACKGROUND_COLOR_LIGHT = Color.rgb(22, 22, 22)
+
 private const val MAJOR_TICK_THICKNESS = 0.05f
 private const val MINOR_TICK_THICKNESS = 0.01f
 private const val OUTER_TICK_RADIUS = 8.5f/9f
 private const val MAJOR_TICK_LENGTH = 1f/9f
 private const val MINOR_TICK_LENGTH = 0.5f/9f
+private const val RAIN_TICKS_THRESHOLD = 0.12
+private const val RAIN_TICK_MAX_LENGTH = OUTER_TICK_RADIUS
+
+private const val WATCH_HAND_COLOR = Color.WHITE
+private val MAJOR_TICK_COLOR = Color.rgb(230, 230, 230)
+private val MINOR_TICK_COLOR = Color.rgb(170, 170, 170)
 
 private const val HOUR_LENGTH = 5f/9f
 private const val HOUR_BORDER_THICKNESS = 0.015f
@@ -65,31 +78,26 @@ private const val SECOND_THICKNESS = 0.02f
 private const val CENTER_CIRCLE_RADIUS = 0.06f
 private const val INNER_CIRCLE_RADIUS = CENTER_CIRCLE_RADIUS - MINUTE_BORDER_THICKNESS
 
-// TODO move these to a values file
-private const val WATCH_HAND_COLOR = Color.WHITE
-private val WATCH_HAND_THERMOMETER_COLOR = Color.rgb(211, 47, 47)// TODO better colors
-private val MAJOR_TICK_COLOR = Color.rgb(230, 230, 230)
-private val MINOR_TICK_COLOR = Color.rgb(170, 170, 170)
+private val GAUGE_BACKGROUND_COLOR = Color.rgb(50, 50, 50)
+private val TEMPERATURE_COLOR = Color.rgb(211, 47, 47)
 private val TEMPERATURE_FILL_COLOR = Color.argb(80, 230, 81, 0)
-private val WATCH_HAND_THERMOMETER_BACKGROUND_COLOR = Color.rgb(50, 50, 50)
-private val WATCH_HAND_BAROMETER_COLOR = Color.rgb(0, 121, 107)
+private val PRESSURE_COLOR = Color.rgb(0, 121, 107)
 private val PRESSURE_FILL_COLOR = Color.argb(80, 0, 131, 143)
 private val ZERO_DEGREES_COLOR = Color.rgb(127, 219, 255)
 private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)
 private const val ZERO_DEGREES_THICKNESS = 0.03f
 private const val FIVE_DEGREES_THICKNESS = 0.02f
-private const val BACKGROUND_COLOR = Color.BLACK
-private val BACKGROUND_COLOR_LIGHT = Color.rgb(22, 22, 22)
-private val CALENDAR_COLORS = listOf(
-    Color.rgb(33, 150, 243),
-    Color.rgb(171, 71, 188),
-    Color.rgb(255, 87, 34))
-private const val CALENDAR_GAP_MINUTES = 1.5
 
 private const val CALENDAR_THICKNESS = 0.02f
 private const val CALENDAR_RADIUS = 7f/9f
 private const val CALENDAR_TEXT_SIZE = 0.18f
 private val CALENDAR_TEXT_HEIGHTS = listOf(4f/9f, 2f/9f)
+
+private val CALENDAR_COLORS = listOf(
+    Color.rgb(33, 150, 243),
+    Color.rgb(171, 71, 188),
+    Color.rgb(255, 87, 34))
+private const val CALENDAR_GAP_MINUTES = 1.5
 
 private const val WEATHER_RING_THICKNESS = 0.04f
 private const val WEATHER_RING_MAX_THICKNESS = 3f/9f
@@ -99,14 +107,11 @@ private const val MAX_RAIN = 8f
 private const val MIN_DISPLAY_PRECIP = 0.09f
 
 private val RAIN_COLOR = Color.rgb(100, 181, 246)
-private val DARK_RAIN_COLOR = Color.rgb(13, 71, 161)
 private val CLEAR_COLOR = Color.rgb(255, 213, 79)
 private val CLOUD_COLOR = Color.WHITE
+private val DARK_RAIN_COLOR = Color.rgb(13, 71, 161)
 private val DARK_CLEAR_COLOR = Color.rgb(66, 66, 66)
 private val DARK_CLOUD_COLOR = Color.rgb(158, 158, 158)
-
-private const val RAIN_TICKS_THRESHOLD = 0.12
-private const val RAIN_TICK_MAX_LENGTH = OUTER_TICK_RADIUS
 
 /**
  * Code to tell ResultReceiver that calendar permission is granted, and key to pass ResultReceiver in Intent.
@@ -642,7 +647,7 @@ class Annulus : CanvasWatchFaceService() {
                      * Only take data for the next 11 hours, and clip the segment edges to lie in this interval.
                      */
                     if (end < now || begin >= now + 11*DateUtils.HOUR_IN_MILLIS) {
-                        break
+                        continue
                     }
                     if (begin < now) {
                         begin = now
@@ -771,7 +776,7 @@ class Annulus : CanvasWatchFaceService() {
                     segment.sweepAngle+2*ARC_EPSILON*WEATHER_RING_RADIUS,
                     WEATHER_RING_RADIUS-thickness/2f,
                     WEATHER_RING_RADIUS+thickness/2f)
-                mFillPaint.color = color // TODO rename this paint and maybe merge with others?
+                mFillPaint.color = color
                 canvas.drawPath(path, mFillPaint)
             }
 
@@ -871,7 +876,7 @@ class Annulus : CanvasWatchFaceService() {
              */
 
             val hourHandBackgroundColor = if (weatherData.currentPressure != null)
-                WATCH_HAND_THERMOMETER_BACKGROUND_COLOR else WATCH_HAND_COLOR
+                GAUGE_BACKGROUND_COLOR else WATCH_HAND_COLOR
 
             canvas.save()
             canvas.rotate(hoursRotation, 0f, 0f)
@@ -887,7 +892,7 @@ class Annulus : CanvasWatchFaceService() {
                 val hourPressureLength = HOUR_LENGTH * pressureToRatio(weatherData.currentPressure)
 
                 /* Green to show the pressure. */
-                mFillPaint.color = WATCH_HAND_BAROMETER_COLOR
+                mFillPaint.color = PRESSURE_COLOR
                 canvas.drawPath(
                     handPath(
                         HOUR_THICKNESS, HOUR_TIP_THICKNESS, hourPressureLength, 0f),
@@ -938,7 +943,7 @@ class Annulus : CanvasWatchFaceService() {
              */
 
             val minuteHandBackgroundColor = if (weatherData.currentTemperature != null)
-                WATCH_HAND_THERMOMETER_BACKGROUND_COLOR else WATCH_HAND_COLOR
+                GAUGE_BACKGROUND_COLOR else WATCH_HAND_COLOR
 
             /* Draw central circle */
             mFillPaint.color = WATCH_HAND_COLOR
@@ -962,7 +967,7 @@ class Annulus : CanvasWatchFaceService() {
                 val minuteTemperatureLength = MINUTE_LENGTH * temperatureToRatio(weatherData.currentTemperature)
 
                 /* Red to show the temperature. */
-                mFillPaint.color = WATCH_HAND_THERMOMETER_COLOR
+                mFillPaint.color = TEMPERATURE_COLOR
                 canvas.drawPath(
                     handPath(
                         MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, minuteTemperatureLength, 0f),
@@ -990,7 +995,7 @@ class Annulus : CanvasWatchFaceService() {
 
             if (weatherData.currentTemperature != null) {
                 /* Red central circle ("mercury reservoir") */
-                mFillPaint.color = WATCH_HAND_THERMOMETER_COLOR
+                mFillPaint.color = TEMPERATURE_COLOR
                 canvas.drawCircle(
                     0f, 0f,
                     INNER_CIRCLE_RADIUS,
