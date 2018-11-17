@@ -68,12 +68,14 @@ private const val INNER_CIRCLE_RADIUS = CENTER_CIRCLE_RADIUS - MINUTE_BORDER_THI
 // TODO move these to a values file
 private const val WATCH_HAND_COLOR = Color.WHITE
 private val WATCH_HAND_THERMOMETER_COLOR = Color.rgb(211, 47, 47)// TODO better colors
+private val MAJOR_TICK_COLOR = Color.rgb(230, 230, 230)
+private val MINOR_TICK_COLOR = Color.rgb(170, 170, 170)
 private val TEMPERATURE_FILL_COLOR = Color.argb(80, 230, 81, 0)
 private val WATCH_HAND_THERMOMETER_BACKGROUND_COLOR = Color.rgb(50, 50, 50)
 private val WATCH_HAND_BAROMETER_COLOR = Color.rgb(0, 121, 107)
 private val PRESSURE_FILL_COLOR = Color.argb(80, 0, 131, 143)
 private val ZERO_DEGREES_COLOR = Color.rgb(127, 219, 255)
-private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)// TODO rename? since used for ticks
+private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)
 private const val ZERO_DEGREES_THICKNESS = 0.03f
 private const val FIVE_DEGREES_THICKNESS = 0.02f
 private const val BACKGROUND_COLOR = Color.BLACK
@@ -520,12 +522,10 @@ class Annulus : CanvasWatchFaceService() {
             drawBackground(canvas)
 
             mWeatherDataSource?.mWeatherData?.run{
-                Log.d("Annulus", this.toString())
                 drawWeather(canvas, now, this)
             }
             mCalendarDataSource?.run{
                 val nextHourCalendarData = nextHourCalendarData(now)
-                Log.d("Annulus", nextHourCalendarData.toString())
                 drawCalendar(canvas, now, nextHourCalendarData)
             }
 
@@ -690,15 +690,14 @@ class Annulus : CanvasWatchFaceService() {
                 return p
             }
 
-            /*
-             * Draw weather data segments in a ring.
-             */
-
             /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
             canvas.save()
             canvas.translate(mCenterX, mCenterY)
             canvas.scale(mRadius, mRadius, 0f, 0f)
 
+            /*
+             * Draw a circular graph of pressure / temperature data.
+             */
             fun drawHourlyGraph(dataPoints: MutableList<Pair<Float, Float>>, maxLength: Float, color: Int) {
                 if (dataPoints.isNotEmpty()) {
                     /* Avoid interpolating between first and last data points */
@@ -708,10 +707,30 @@ class Annulus : CanvasWatchFaceService() {
                     dataPoints.add(Pair(nowAngle, dataPoints[dataPoints.size-1].second))
 
                     val path = Path()
-                    for ((angle, ratio) in dataPoints) {
+                    for (i in 0 until dataPoints.size) {
+                        val (angle, ratio) = dataPoints[i]
+
                         val xDir = sin(angle*PI.toFloat()/180)
                         val yDir = -cos(angle*PI.toFloat()/180)
-                        path.lineTo(xDir * maxLength * ratio, yDir * maxLength * ratio)
+
+                        /* For points after the first, interpolate with a line curved as if the graph were a perfect
+                         * circle (i.e. constant pressure / temperature.
+                         */
+                        if (i == 0) {
+                            path.moveTo(xDir * maxLength * ratio, yDir * maxLength * ratio)
+                        } else {
+                            val (prevAngle, prevRatio) = dataPoints[i-1]
+                            val sweepAngle = (angle+360-prevAngle) % 360
+                            val controlLen = maxLength / cos((sweepAngle/2f)*PI.toFloat()/180)
+
+                            val midXDir = sin((angle-sweepAngle/2f)*PI.toFloat()/180)
+                            val midYDir = -cos((angle-sweepAngle/2f)*PI.toFloat()/180)
+
+                            val midRatio = (ratio+prevRatio)/2f
+
+                            path.quadTo(midXDir * controlLen * midRatio, midYDir * controlLen * midRatio,
+                                xDir * maxLength * ratio, yDir * maxLength * ratio)
+                        }
                     }
                     path.close()
 
@@ -723,6 +742,9 @@ class Annulus : CanvasWatchFaceService() {
             drawHourlyGraph(pressures, HOUR_LENGTH, PRESSURE_FILL_COLOR)
             drawHourlyGraph(temperatures, MINUTE_LENGTH, TEMPERATURE_FILL_COLOR)
 
+            /*
+             * Draw weather data ring.
+             */
             for (segment in segments) {
                 var thickness = WEATHER_RING_THICKNESS
                 var color = 0
@@ -793,11 +815,11 @@ class Annulus : CanvasWatchFaceService() {
                 var tickLength: Float
                 if (tickIndex % 5 == 0) {
                     tickLength = MAJOR_TICK_LENGTH
-                    mTickPaint.color = weatherData.tickParams?.get(tickIndex)?.second ?: WATCH_HAND_COLOR
+                    mTickPaint.color = weatherData.tickParams?.get(tickIndex)?.second ?: MAJOR_TICK_COLOR
                     mTickPaint.strokeWidth = MAJOR_TICK_THICKNESS
                 } else {
                     tickLength = weatherData.tickParams?.get(tickIndex)?.first ?: MINOR_TICK_LENGTH
-                    mTickPaint.color = weatherData.tickParams?.get(tickIndex)?.second ?: FIVE_DEGREES_COLOR
+                    mTickPaint.color = weatherData.tickParams?.get(tickIndex)?.second ?: MINOR_TICK_COLOR
                     mTickPaint.strokeWidth = MINOR_TICK_THICKNESS
                 }
                 val tickRot = (tickIndex.toDouble() * Math.PI * 2.0 / 60)
