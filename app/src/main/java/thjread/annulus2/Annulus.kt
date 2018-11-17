@@ -67,11 +67,11 @@ private const val INNER_CIRCLE_RADIUS = CENTER_CIRCLE_RADIUS - MINUTE_BORDER_THI
 
 // TODO move these to a values file
 private const val WATCH_HAND_COLOR = Color.WHITE
-private val WATCH_HAND_THERMOMETER_COLOR = Color.rgb(255, 65, 54)
-private val TEMPERATURE_FILL_COLOR = Color.argb(80, 255, 65, 54)
+private val WATCH_HAND_THERMOMETER_COLOR = Color.rgb(211, 47, 47)// TODO better colors
+private val TEMPERATURE_FILL_COLOR = Color.argb(80, 230, 81, 0)
 private val WATCH_HAND_THERMOMETER_BACKGROUND_COLOR = Color.rgb(50, 50, 50)
-private val WATCH_HAND_BAROMETER_COLOR = Color.rgb(61, 153, 112)
-private val PRESSURE_FILL_COLOR = Color.argb(80, 61, 153, 112)
+private val WATCH_HAND_BAROMETER_COLOR = Color.rgb(0, 121, 107)
+private val PRESSURE_FILL_COLOR = Color.argb(80, 0, 131, 143)
 private val ZERO_DEGREES_COLOR = Color.rgb(127, 219, 255)
 private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)// TODO rename? since used for ticks
 private const val ZERO_DEGREES_THICKNESS = 0.03f
@@ -276,10 +276,10 @@ class Annulus : CanvasWatchFaceService() {
         private var mRadius: Float = 0F
         private var mChinSize: Float = 0F
 
-        private lateinit var mHandFillPaint: Paint
+        private lateinit var mFillPaint: Paint
+        private lateinit var mScreenPaint: Paint
         private lateinit var mHandStrokePaint: Paint
         private lateinit var mTickPaint: Paint
-        private lateinit var mTextPaint: Paint
         private lateinit var mCalendarPaint: Paint
 
         private var mAmbient: Boolean = false
@@ -354,10 +354,18 @@ class Annulus : CanvasWatchFaceService() {
         private fun initializeWatchFace() {
 
             /* Set color before each use */
-            mHandFillPaint = Paint().apply {
-                strokeWidth = 0F
+            mFillPaint = Paint().apply {
+                strokeWidth = 0f
                 isAntiAlias = true
                 style = Paint.Style.FILL
+            }
+
+            /* Set color before each use */
+            mScreenPaint = Paint().apply {
+                strokeWidth = 0f
+                isAntiAlias = true
+                style = Paint.Style.FILL
+                xfermode = PorterDuffXfermode(PorterDuff.Mode.LIGHTEN)
             }
 
             /* Set color, strokeWidth before each use */
@@ -374,11 +382,6 @@ class Annulus : CanvasWatchFaceService() {
                 style = Paint.Style.STROKE
             }
 
-            mTextPaint = Paint().apply {
-                isAntiAlias = true
-                style = Paint.Style.FILL
-            }
-
             mCalendarPaint = Paint().apply {
                 strokeWidth = CALENDAR_THICKNESS
                 isAntiAlias = true
@@ -391,25 +394,27 @@ class Annulus : CanvasWatchFaceService() {
         }
 
         private fun updateWatchHandStyle() {
+            // TODO clean this up
+
             if (mAmbient) {
                 mHandStrokePaint.color = Color.WHITE
                 mTickPaint.color = Color.WHITE
 
                 if (mLowBitAmbient) {
-                    mHandFillPaint.isAntiAlias = false
+                    mFillPaint.isAntiAlias = false
+                    mScreenPaint.isAntiAlias = false
                     mHandStrokePaint.isAntiAlias = false
                     mTickPaint.isAntiAlias = false
-                    mTextPaint.isAntiAlias = false
                     mCalendarPaint.isAntiAlias = false
                 }
             } else {
                 mHandStrokePaint.color = WATCH_HAND_COLOR
                 mTickPaint.color = WATCH_HAND_COLOR
 
-                mHandFillPaint.isAntiAlias = true
+                mFillPaint.isAntiAlias = true
+                mScreenPaint.isAntiAlias = true
                 mHandStrokePaint.isAntiAlias = true
                 mTickPaint.isAntiAlias = true
-                mTextPaint.isAntiAlias = true
                 mCalendarPaint.isAntiAlias = true
             }
         }
@@ -450,10 +455,12 @@ class Annulus : CanvasWatchFaceService() {
             super.onInterruptionFilterChanged(interruptionFilter)
             val inMuteMode = interruptionFilter == WatchFaceService.INTERRUPTION_FILTER_NONE
 
+            // TODO clean this up
+
             /* Dim display in mute mode. */
             if (mMuteMode != inMuteMode) {
                 mMuteMode = inMuteMode
-                mHandFillPaint.alpha = if (inMuteMode) 100 else 255
+                mFillPaint.alpha = if (inMuteMode) 100 else 255
                 mHandStrokePaint.alpha = if (inMuteMode) 80 else 255
                 invalidate()
             }
@@ -471,7 +478,7 @@ class Annulus : CanvasWatchFaceService() {
             mCenterY = height / 2f
             mRadius = Math.min(mCenterX, mCenterY)
 
-            mTextPaint.textSize = CALENDAR_TEXT_SIZE*mRadius
+            mFillPaint.textSize = CALENDAR_TEXT_SIZE*mRadius
         }
 
         override fun onApplyWindowInsets(insets: WindowInsets?) {
@@ -549,8 +556,8 @@ class Annulus : CanvasWatchFaceService() {
 
             for (i in 0 until 9 step 2) {
                 val annulusPath = annulusPath(i*1f/9f, (i+1)*1f/9f)
-                mHandFillPaint.color = BACKGROUND_COLOR_LIGHT
-                canvas.drawPath(annulusPath, mHandFillPaint)
+                mFillPaint.color = BACKGROUND_COLOR_LIGHT
+                canvas.drawPath(annulusPath, mFillPaint)
             }
 
             canvas.restore()
@@ -708,8 +715,8 @@ class Annulus : CanvasWatchFaceService() {
                     }
                     path.close()
 
-                    mHandFillPaint.color = color
-                    canvas.drawPath(path, mHandFillPaint)
+                    mScreenPaint.color = color
+                    canvas.drawPath(path, mScreenPaint)
                 }
             }
 
@@ -742,8 +749,8 @@ class Annulus : CanvasWatchFaceService() {
                     segment.sweepAngle+2*ARC_EPSILON*WEATHER_RING_RADIUS,
                     WEATHER_RING_RADIUS-thickness/2f,
                     WEATHER_RING_RADIUS+thickness/2f)
-                mHandFillPaint.color = color // TODO rename this paint and maybe merge with others?
-                canvas.drawPath(path, mHandFillPaint)
+                mFillPaint.color = color // TODO rename this paint and maybe merge with others?
+                canvas.drawPath(path, mFillPaint)
             }
 
             canvas.restore()
@@ -851,18 +858,19 @@ class Annulus : CanvasWatchFaceService() {
                 HOUR_THICKNESS, HOUR_TIP_THICKNESS, HOUR_LENGTH, HOUR_TIP_LENGTH)
 
             /* Dark grey background, or fill in with white if no data available */
-            mHandFillPaint.color = hourHandBackgroundColor
-            canvas.drawPath(hourHandPath, mHandFillPaint)
+            mFillPaint.color = hourHandBackgroundColor
+            canvas.drawPath(hourHandPath, mFillPaint)
 
             if (weatherData.currentPressure != null) {
                 val hourPressureLength = HOUR_LENGTH * pressureToRatio(weatherData.currentPressure)
 
                 /* Green to show the pressure. */
-                mHandFillPaint.color = WATCH_HAND_BAROMETER_COLOR
+                mFillPaint.color = WATCH_HAND_BAROMETER_COLOR
                 canvas.drawPath(
                     handPath(
                         HOUR_THICKNESS, HOUR_TIP_THICKNESS, hourPressureLength, 0f),
-                    mHandFillPaint)
+                    mFillPaint
+                )
 
                 /* White border */
                 mHandStrokePaint.color = WATCH_HAND_COLOR
@@ -911,11 +919,11 @@ class Annulus : CanvasWatchFaceService() {
                 WATCH_HAND_THERMOMETER_BACKGROUND_COLOR else WATCH_HAND_COLOR
 
             /* Draw central circle */
-            mHandFillPaint.color = WATCH_HAND_COLOR
+            mFillPaint.color = WATCH_HAND_COLOR
             canvas.drawCircle(
                 0f, 0f,
                 CENTER_CIRCLE_RADIUS,
-                mHandFillPaint
+                mFillPaint
             )
 
             canvas.save()
@@ -925,18 +933,19 @@ class Annulus : CanvasWatchFaceService() {
                 MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, MINUTE_LENGTH, MINUTE_TIP_LENGTH)
 
             /* Dark grey background. */
-            mHandFillPaint.color = minuteHandBackgroundColor
-            canvas.drawPath(minuteHandPath, mHandFillPaint)
+            mFillPaint.color = minuteHandBackgroundColor
+            canvas.drawPath(minuteHandPath, mFillPaint)
 
             if (weatherData.currentTemperature != null) {
                 val minuteTemperatureLength = MINUTE_LENGTH * temperatureToRatio(weatherData.currentTemperature)
 
                 /* Red to show the temperature. */
-                mHandFillPaint.color = WATCH_HAND_THERMOMETER_COLOR
+                mFillPaint.color = WATCH_HAND_THERMOMETER_COLOR
                 canvas.drawPath(
                     handPath(
                         MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, minuteTemperatureLength, 0f),
-                    mHandFillPaint)
+                    mFillPaint
+                )
 
                 /* Ticks every 5 degrees, with a more obvious tick for 0 Celsius. */
                 for (temperature in -5..25 step 5){
@@ -959,11 +968,11 @@ class Annulus : CanvasWatchFaceService() {
 
             if (weatherData.currentTemperature != null) {
                 /* Red central circle ("mercury reservoir") */
-                mHandFillPaint.color = WATCH_HAND_THERMOMETER_COLOR
+                mFillPaint.color = WATCH_HAND_THERMOMETER_COLOR
                 canvas.drawCircle(
                     0f, 0f,
                     INNER_CIRCLE_RADIUS,
-                    mHandFillPaint
+                    mFillPaint
                 )
             }
 
@@ -977,7 +986,7 @@ class Annulus : CanvasWatchFaceService() {
             val displayNumber = minOf(nextHourData.size, CALENDAR_COLORS.size)
             for (i in 0 until displayNumber) {
                 val event = nextHourData[i]
-                mTextPaint.color = CALENDAR_COLORS[i]
+                mFillPaint.color = CALENDAR_COLORS[i]
                 mCalendarPaint.color = CALENDAR_COLORS[i]
 
                 /*
@@ -1018,11 +1027,12 @@ class Annulus : CanvasWatchFaceService() {
                      * but events should be listed top to bottom.
                      */
                     val height = CALENDAR_TEXT_HEIGHTS[minOf(displayNumber, CALENDAR_TEXT_HEIGHTS.size)-1-i]*mRadius
-                    val width = mTextPaint.measureText(event.title)
+                    val width = mFillPaint.measureText(event.title)
                     canvas.drawText(event.title,
                         mCenterX-width/2f,
                         mCenterY+height,
-                        mTextPaint)
+                        mFillPaint
+                    )
                 }
             }
         }
