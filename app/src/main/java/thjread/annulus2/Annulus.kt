@@ -566,14 +566,14 @@ class Annulus : CanvasWatchFaceService() {
         /**
          * Display pressures from 980 to 1040 hPa.
          */
-        private fun pressureToRatio(pressure: Double): Float =
-            ((pressure.toFloat()-980f)/(1040f-980f)).coerceIn(0f, 1f)
+        private fun pressureToRatio(pressure: Double, rangeMax: Float = 1f): Float =
+            ((pressure.toFloat()-980f)/(1040f-980f)).coerceIn(0f, rangeMax)
 
         /**
          * Display temperatures from -10 to 30 degrees.
          */
-        fun temperatureToRatio(temperature: Double): Float =
-            ((temperature.toFloat() + 10f) / (10f + 30f)).coerceIn(0f, 1f)
+        fun temperatureToRatio(temperature: Double, rangeMax: Float = 1f): Float =
+            ((temperature.toFloat() + 10f) / (10f + 30f)).coerceIn(0f, rangeMax)
 
         /**
          * Draw a ring representing the next 11 hours of weather
@@ -631,10 +631,12 @@ class Annulus : CanvasWatchFaceService() {
                         mCalendar.timeInMillis = (begin + end) / 2
                         val midpointAngle = hourAngle(mCalendar)
                         if (datum.temperature != null) {
-                            temperatures.add(Pair(midpointAngle, temperatureToRatio(datum.temperature)))
+                            temperatures.add(Pair(midpointAngle, temperatureToRatio(datum.temperature,
+                                rangeMax=1f/ MINUTE_LENGTH)))
                         }
                         if (datum.pressure != null) {
-                            pressures.add(Pair(midpointAngle, pressureToRatio(datum.pressure)))
+                            pressures.add(Pair(midpointAngle, pressureToRatio(datum.pressure,
+                                rangeMax=1f/HOUR_LENGTH)))
                         }
                     }
 
