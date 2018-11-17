@@ -68,8 +68,10 @@ private const val INNER_CIRCLE_RADIUS = CENTER_CIRCLE_RADIUS - MINUTE_BORDER_THI
 // TODO move these to a values file
 private const val WATCH_HAND_COLOR = Color.WHITE
 private val WATCH_HAND_THERMOMETER_COLOR = Color.rgb(255, 65, 54)
+private val TEMPERATURE_FILL_COLOR = Color.argb(80, 255, 65, 54)
 private val WATCH_HAND_THERMOMETER_BACKGROUND_COLOR = Color.rgb(50, 50, 50)
 private val WATCH_HAND_BAROMETER_COLOR = Color.rgb(61, 153, 112)
+private val PRESSURE_FILL_COLOR = Color.argb(80, 61, 153, 112)
 private val ZERO_DEGREES_COLOR = Color.rgb(127, 219, 255)
 private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)// TODO rename? since used for ticks
 private const val ZERO_DEGREES_THICKNESS = 0.03f
@@ -87,8 +89,8 @@ private const val CALENDAR_RADIUS = 7f/9f
 private const val CALENDAR_TEXT_SIZE = 0.18f
 private val CALENDAR_TEXT_HEIGHTS = listOf(4f/9f, 2f/9f)
 
-private const val WEATHER_RING_THICKNESS = 0.03f
-private const val WEATHER_RING_MAX_THICKNESS = 2f/9f
+private const val WEATHER_RING_THICKNESS = 0.04f
+private const val WEATHER_RING_MAX_THICKNESS = 3f/9f
 private const val WEATHER_RING_RADIUS = 4f/9f
 private const val ARC_EPSILON = 0.8f
 private const val MAX_RAIN = 8f
@@ -160,74 +162,6 @@ class PermissionActivity() : Activity() {
 }
 
 /**
- * Utility function for interpolating between two colors.
- */
-private fun interpolateColor(a: Int, b:  Int, ratio: Float): Int {
-    val r = (Color.red(a)*ratio + Color.red(b)*(1f-ratio)).toInt()
-    val g = (Color.green(a)*ratio + Color.green(b)*(1f-ratio)).toInt()
-    val b = (Color.blue(a)*ratio + Color.blue(b)*(1f-ratio)).toInt()
-    return Color.rgb(r, g, b)
-}
-
-/**
- * Weather data which is passed to the watchface drawing function.
- * tickParams contains a list of (length, color)
- */
-data class WatchfaceWeatherData (val currentTemperature: Double?, val currentPressure: Double?,
-                                 val currentWindSpeed: Double?, val tickParams: List<Pair<Float, Int>>?) {
-    companion object {
-        fun fromWeatherData(data: WeatherService.WeatherData?, now: Long, calendar: Calendar): WatchfaceWeatherData {
-            val tickParams = MutableList(60) { Pair(0f, FIVE_DEGREES_COLOR) }
-
-            /* Only pass tickParams if there is sufficient rain in the next hour */
-            // TODO also check sufficient data available
-            var showRain = false
-            if (data?.minutely != null) {
-
-                calendar.timeInMillis = now
-                val currentMinute = calendar.get(Calendar.MINUTE)
-
-                for (datum in data.minutely.data) {
-                    val time = datum.time*DateUtils.SECOND_IN_MILLIS
-                    if (time <= now || time > now + DateUtils.HOUR_IN_MILLIS) {
-                        continue
-                    }
-
-                    calendar.timeInMillis = time
-                    val minute = calendar.get(Calendar.MINUTE)
-                    val precipProbability = datum.precipProbability ?: 0.0
-                    val precipExpectation = datum.precipIntensity?.times(precipProbability) ?: 0.0
-
-                    if (precipExpectation >= RAIN_TICKS_THRESHOLD) {
-                        showRain = true
-                    }
-                    val length = minOf(MINOR_TICK_LENGTH +
-                            RAIN_TICK_MAX_LENGTH * precipExpectation.toFloat() / MAX_RAIN,
-                        OUTER_TICK_RADIUS)
-                    val minutesFromNow = (minute+60-currentMinute) % 60
-                    /* Shrink the last few minutes of the hour to show clearly that they represent the future and not
-                     * the past.
-                     */
-                    val lengthMultiplier = when {
-                        minutesFromNow >= 56 ->  (4f-(minutesFromNow.toFloat()-56f))/4f
-                        minutesFromNow == 0 -> 0f
-                        else -> 1f
-                    }
-                    val color = interpolateColor(RAIN_COLOR, FIVE_DEGREES_COLOR, precipProbability.toFloat())
-                    tickParams[minute] = Pair(length*lengthMultiplier, color)
-                }
-            }
-
-            return WatchfaceWeatherData(data?.currently?.temperature, data?.currently?.pressure,
-                data?.currently?.windSpeed, if (showRain) { tickParams } else { null })
-        }
-    }
-}
-
-data class WeatherRingSegment (val startAngle: Float, val sweepAngle: Float, val precipExpectation: Float, val cloudCover: Float, val day: Boolean)
-// TODO precipProbability or precipIntensityError?
-
-/**
  * Analog watch face with a ticking second hand. In ambient mode, the second hand isn't
  * shown. On devices with low-bit ambient mode, the hands are drawn without anti-aliasing in ambient
  * mode. The watch face is drawn with less contrast in mute mode.
@@ -258,6 +192,76 @@ class Annulus : CanvasWatchFaceService() {
                 when (msg.what) {
                     MSG_UPDATE_TIME -> engine.handleUpdateTimeMessage()
                 }
+            }
+        }
+    }
+
+    companion object {
+        /**
+         * Utility function for interpolating between two colors.
+         */
+        private fun interpolateColor(a: Int, b:  Int, ratio: Float): Int {
+            val r = (Color.red(a)*ratio + Color.red(b)*(1f-ratio)).toInt()
+            val g = (Color.green(a)*ratio + Color.green(b)*(1f-ratio)).toInt()
+            val b = (Color.blue(a)*ratio + Color.blue(b)*(1f-ratio)).toInt()
+            return Color.rgb(r, g, b)
+        }
+    }
+
+    data class WeatherRingSegment (val startAngle: Float, val sweepAngle: Float, val precipExpectation: Float, val cloudCover: Float, val day: Boolean)
+    // TODO precipProbability or precipIntensityError?
+
+    /**
+     * Weather data which is passed to the watchface drawing function.
+     * tickParams contains a list of (length, color)
+     */
+    data class WatchfaceWeatherData (val currentTemperature: Double?, val currentPressure: Double?,
+                                     val currentWindSpeed: Double?, val tickParams: List<Pair<Float, Int>>?) {
+        companion object {
+            fun fromWeatherData(data: WeatherService.WeatherData?, now: Long, calendar: Calendar): WatchfaceWeatherData {
+                val tickParams = MutableList(60) { Pair(0f, FIVE_DEGREES_COLOR) }
+
+                /* Only pass tickParams if there is sufficient rain in the next hour */
+                // TODO also check sufficient data available
+                var showRain = false
+                if (data?.minutely != null) {
+
+                    calendar.timeInMillis = now
+                    val currentMinute = calendar.get(Calendar.MINUTE)
+
+                    for (datum in data.minutely.data) {
+                        val time = datum.time*DateUtils.SECOND_IN_MILLIS
+                        if (time <= now || time > now + DateUtils.HOUR_IN_MILLIS) {
+                            continue
+                        }
+
+                        calendar.timeInMillis = time
+                        val minute = calendar.get(Calendar.MINUTE)
+                        val precipProbability = datum.precipProbability ?: 0.0
+                        val precipExpectation = datum.precipIntensity?.times(precipProbability) ?: 0.0
+
+                        if (precipExpectation >= RAIN_TICKS_THRESHOLD) {
+                            showRain = true
+                        }
+                        val length = minOf(MINOR_TICK_LENGTH +
+                                RAIN_TICK_MAX_LENGTH * precipExpectation.toFloat() / MAX_RAIN,
+                            OUTER_TICK_RADIUS)
+                        val minutesFromNow = (minute+60-currentMinute) % 60
+                        /* Shrink the last few minutes of the hour to show clearly that they represent the future and not
+                         * the past.
+                         */
+                        val lengthMultiplier = when {
+                            minutesFromNow >= 56 ->  (4f-(minutesFromNow.toFloat()-56f))/4f
+                            minutesFromNow == 0 -> 0f
+                            else -> 1f
+                        }
+                        val color = Annulus.interpolateColor(RAIN_COLOR, FIVE_DEGREES_COLOR, precipProbability.toFloat())
+                        tickParams[minute] = Pair(length*lengthMultiplier, color)
+                    }
+                }
+
+                return WatchfaceWeatherData(data?.currently?.temperature, data?.currently?.pressure,
+                    data?.currently?.windSpeed, if (showRain) { tickParams } else { null })
             }
         }
     }
@@ -553,149 +557,196 @@ class Annulus : CanvasWatchFaceService() {
         }
 
         /**
+         * Display pressures from 980 to 1040 hPa.
+         */
+        private fun pressureToRatio(pressure: Double): Float =
+            ((pressure.toFloat()-980f)/(1040f-980f)).coerceIn(0f, 1f)
+
+        /**
+         * Display temperatures from -10 to 30 degrees.
+         */
+        fun temperatureToRatio(temperature: Double): Float =
+            ((temperature.toFloat() + 10f) / (10f + 30f)).coerceIn(0f, 1f)
+
+        /**
          * Draw a ring representing the next 11 hours of weather
          */
         private fun drawWeather(canvas: Canvas, now: Long, weatherData: WeatherService.WeatherData) {
 
             /*
-             * Processes weather data to produce start angles, sweep angles, and weather data necessary for display
+             * Process weather data to produce start angles, sweep angles, and weather data necessary for display
              * (precipitation, cloud cover, day/night).
              */
-            fun weatherRingSegments(now: Long, weatherData: WeatherService.WeatherData): List<WeatherRingSegment> {
-                val sunriseOrSunsets: MutableList<Pair<Long, Boolean>> = mutableListOf() // (time, isSunrise)
-                if (weatherData.daily != null) {
-                    for (datum in weatherData.daily.data) {
-                        datum.sunriseTime?.let {
-                            sunriseOrSunsets.add(Pair(it*DateUtils.SECOND_IN_MILLIS, true))
-                        }
-                        datum.sunsetTime?.let {
-                            sunriseOrSunsets.add(Pair(it*DateUtils.SECOND_IN_MILLIS, false))
-                        }
+            val sunriseOrSunsets: MutableList<Pair<Long, Boolean>> = mutableListOf() // (time, isSunrise)
+            if (weatherData.daily != null) {
+                for (datum in weatherData.daily.data) {
+                    datum.sunriseTime?.let {
+                        sunriseOrSunsets.add(Pair(it*DateUtils.SECOND_IN_MILLIS, true))
+                    }
+                    datum.sunsetTime?.let {
+                        sunriseOrSunsets.add(Pair(it*DateUtils.SECOND_IN_MILLIS, false))
                     }
                 }
+            }
 
-                fun createWeatherRingSegment(begin: Long, end: Long, datum: WeatherService.Datum, day: Boolean): WeatherRingSegment {
-                    val precipExpectation = if (datum.precipProbability != null && datum.precipIntensity != null) {
-                        (datum.precipProbability * datum.precipIntensity).toFloat()
+            fun createWeatherRingSegment(begin: Long, end: Long, datum: WeatherService.Datum, day: Boolean): WeatherRingSegment {
+                val precipExpectation = if (datum.precipProbability != null && datum.precipIntensity != null) {
+                    (datum.precipProbability * datum.precipIntensity).toFloat()
+                } else {
+                    0f
+                }
+
+                val cloudCover = datum.cloudCover?.toFloat() ?: 0.0f
+
+                mCalendar.timeInMillis = begin
+                val startAngle = hourAngle(mCalendar)
+
+                mCalendar.timeInMillis = end
+                val endAngle = hourAngle(mCalendar)
+                val sweepAngle = (endAngle + 360 - startAngle) % 360
+
+                return WeatherRingSegment(startAngle, sweepAngle, precipExpectation, cloudCover, day)
+            }
+
+            val segments: MutableList<WeatherRingSegment> = mutableListOf()
+            val temperatures: MutableList<Pair<Float, Float>> = mutableListOf() // angle, ratio
+            val pressures: MutableList<Pair<Float, Float>> = mutableListOf() // angle, ratio
+
+            if (weatherData.hourly != null) {
+                for (datum in weatherData.hourly.data) {
+                    var begin = datum.time * DateUtils.SECOND_IN_MILLIS
+                    var end = begin + DateUtils.HOUR_IN_MILLIS
+
+                    /*
+                     * Add temperature and pressure for the next 12 hours to lists.
+                     */
+                    if ((begin+end)/2 >= now && (begin+end)/2 < now + 12*DateUtils.HOUR_IN_MILLIS) {
+                        mCalendar.timeInMillis = (begin + end) / 2
+                        val midpointAngle = hourAngle(mCalendar)
+                        if (datum.temperature != null) {
+                            temperatures.add(Pair(midpointAngle, temperatureToRatio(datum.temperature)))
+                        }
+                        if (datum.pressure != null) {
+                            pressures.add(Pair(midpointAngle, pressureToRatio(datum.pressure)))
+                        }
+                    }
+
+                    /*
+                     * Only take data for the next 11 hours, and clip the segment edges to lie in this interval.
+                     */
+                    if (end < now || begin >= now + 11*DateUtils.HOUR_IN_MILLIS) {
+                        break
+                    }
+                    if (begin < now) {
+                        begin = now
+                    }
+                    if (end > now + 11*DateUtils.HOUR_IN_MILLIS) {
+                        end = now + 11*DateUtils.HOUR_IN_MILLIS
+                    }
+
+                    /*
+                     * binarySearch returns the index of the element matching the key if it's found exactly, or
+                     * otherwise -i-1 where i is the index at which the key could be inserted to maintain sorted
+                     * order.
+                     */
+                    val sunIndex = sunriseOrSunsets.binarySearchBy(begin, selector={ p -> p.first })
+                    val previousSun = sunriseOrSunsets.getOrNull(if (sunIndex >= 0) { sunIndex } else { -sunIndex-2 })
+                    val nextSun = sunriseOrSunsets.getOrNull(if (sunIndex >= 0) { sunIndex + 1} else { -sunIndex-1 })
+
+                    /*
+                     * If day/night changes during the hour, create two segments.
+                     * If not, decide whether it's day or night based on the previous change, or otherwise based on
+                     * the next change, or otherwise assuming day if no data is available.
+                     */
+                    if (nextSun != null && nextSun.first <= end) {
+                        val split = nextSun.first
+                        segments.add(createWeatherRingSegment(begin, split, datum, !nextSun.second))
+                        segments.add(createWeatherRingSegment(split, end, datum, nextSun.second))
                     } else {
-                        0f
-                    }
-
-                    val cloudCover = datum.cloudCover?.toFloat() ?: 0.0f
-
-                    mCalendar.timeInMillis = begin
-                    val startAngle = hourAngle(mCalendar)
-
-                    mCalendar.timeInMillis = end
-                    val endAngle = hourAngle(mCalendar)
-                    val sweepAngle = (endAngle + 360 - startAngle) % 360
-
-                    return WeatherRingSegment(startAngle, sweepAngle, precipExpectation, cloudCover, day)
-                }
-
-                val segments: MutableList<WeatherRingSegment> = mutableListOf()
-                if (weatherData.hourly != null) {
-                    for (datum in weatherData.hourly.data) {
-                        var begin = datum.time * DateUtils.SECOND_IN_MILLIS
-                        var end = begin + DateUtils.HOUR_IN_MILLIS
-
-                        /*
-                         * Only take data for the next 11 hours, and clip the segment edges to lie in this interval.
-                         */
-                        if (end < now || begin > now + 11*DateUtils.HOUR_IN_MILLIS) {
-                            break
-                        }
-                        if (begin < now) {
-                            begin = now
-                        }
-                        if (end > now + 11*DateUtils.HOUR_IN_MILLIS) {
-                            end = now + 11*DateUtils.HOUR_IN_MILLIS
-                        }
-
-                        /*
-                         * binarySearch returns the index of the element matching the key if it's found exactly, or
-                         * otherwise -i-1 where i is the index at which the key could be inserted to maintain sorted
-                         * order.
-                         */
-                        val sunIndex = sunriseOrSunsets.binarySearchBy(begin, selector={ p -> p.first })
-                        val previousSun = sunriseOrSunsets.getOrNull(if (sunIndex >= 0) { sunIndex } else { -sunIndex-2 })
-                        val nextSun = sunriseOrSunsets.getOrNull(if (sunIndex >= 0) { sunIndex + 1} else { -sunIndex-1 })
-
-                        /*
-                         * If day/night changes during the hour, create two segments.
-                         * If not, decide whether it's day or night based on the previous change, or otherwise based on
-                         * the next change, or otherwise assuming day if no data is available.
-                         */
-                        if (nextSun != null && nextSun.first <= end) {
-                            val split = nextSun.first
-                            segments.add(createWeatherRingSegment(begin, split, datum, !nextSun.second))
-                            segments.add(createWeatherRingSegment(split, end, datum, nextSun.second))
-                        } else {
-                            val day = previousSun?.second ?: (nextSun?.second?.not() ?: true)
-                            segments.add(createWeatherRingSegment(begin, end, datum, day))
-                        }
+                        val day = previousSun?.second ?: (nextSun?.second?.not() ?: true)
+                        segments.add(createWeatherRingSegment(begin, end, datum, day))
                     }
                 }
-
-                return segments
             }
 
             /*
-             * Draws hourly weather in a ring, calculating colour and thickness from the given weather data.
+             * Draw an arc starting at vertical and going clockwise by sweepAngle, between innerRadius and outerRadius.
              */
-            fun drawWeatherRingSegments(canvas: Canvas, segments: List<WeatherRingSegment>) {
-
-                /*
-                 * Draw an arc starting at vertical and going clockwise by sweepAngle, between innerRadius and outerRadius.
-                 */
-                fun arcPath(startAngle: Float, sweepAngle: Float, innerRadius: Float, outerRadius: Float): Path {
-                    val p = Path()
-                    /* Angle measured from x axis rather than y axis, so subtract 90 degrees */
-                    p.arcTo(RectF(-outerRadius, -outerRadius, outerRadius, outerRadius),
-                        startAngle-90f, sweepAngle)
-                    p.arcTo(RectF(-innerRadius, -innerRadius, innerRadius, innerRadius),
-                        startAngle+sweepAngle-90, -sweepAngle)
-                    p.close()
-                    return p
-                }
-
-                /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
-                canvas.save()
-                canvas.translate(mCenterX, mCenterY)
-                canvas.scale(mRadius, mRadius, 0f, 0f)
-
-                for (segment in segments) {
-                    var thickness = WEATHER_RING_THICKNESS
-                    var color = 0
-                    //val len = WEATHER_RING_THICKNESS
-
-                    if (segment.precipExpectation >= MIN_DISPLAY_PRECIP) {
-                        thickness = WEATHER_RING_THICKNESS +
-                                (WEATHER_RING_MAX_THICKNESS-WEATHER_RING_THICKNESS) * segment.precipExpectation / MAX_RAIN
-                        color = if (segment.day) { RAIN_COLOR } else { DARK_RAIN_COLOR }
-                    } else {
-                        color = if (segment.day) {
-                            interpolateColor(CLOUD_COLOR, CLEAR_COLOR, segment.cloudCover)
-                        } else {
-                            interpolateColor(DARK_CLOUD_COLOR, DARK_CLEAR_COLOR, segment.cloudCover)
-                        }
-                    }
-
-                    /* Add an extra ARC_EPSILON*WEATHER_RING_RADIUS to make sure segments overlap very slightly and avoid minor artefacts */
-                    val path = arcPath(
-                        segment.startAngle-ARC_EPSILON*WEATHER_RING_RADIUS,
-                        segment.sweepAngle+2*ARC_EPSILON*WEATHER_RING_RADIUS,
-                        WEATHER_RING_RADIUS-thickness/2f,
-                        WEATHER_RING_RADIUS+thickness/2f)
-                    mHandFillPaint.color = color // TODO rename this paint and maybe merge with others?
-                    canvas.drawPath(path, mHandFillPaint)
-                }
-
-                canvas.restore()
+            fun arcPath(startAngle: Float, sweepAngle: Float, innerRadius: Float, outerRadius: Float): Path {
+                val p = Path()
+                /* Angle measured from x axis rather than y axis, so subtract 90 degrees */
+                p.arcTo(RectF(-outerRadius, -outerRadius, outerRadius, outerRadius),
+                    startAngle-90f, sweepAngle)
+                p.arcTo(RectF(-innerRadius, -innerRadius, innerRadius, innerRadius),
+                    startAngle+sweepAngle-90, -sweepAngle)
+                p.close()
+                return p
             }
 
-            val segments = weatherRingSegments(now, weatherData)
-            drawWeatherRingSegments(canvas, segments)
+            /*
+             * Draw weather data segments in a ring.
+             */
+
+            /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
+            canvas.save()
+            canvas.translate(mCenterX, mCenterY)
+            canvas.scale(mRadius, mRadius, 0f, 0f)
+
+            fun drawHourlyGraph(dataPoints: MutableList<Pair<Float, Float>>, maxLength: Float, color: Int) {
+                if (dataPoints.isNotEmpty()) {
+                    /* Avoid interpolating between first and last data points */
+                    mCalendar.timeInMillis = now
+                    val nowAngle = hourAngle(mCalendar)
+                    dataPoints.add(0, Pair(nowAngle, dataPoints[0].second))
+                    dataPoints.add(Pair(nowAngle, dataPoints[dataPoints.size-1].second))
+
+                    val path = Path()
+                    for ((angle, ratio) in dataPoints) {
+                        val xDir = sin(angle*PI.toFloat()/180)
+                        val yDir = -cos(angle*PI.toFloat()/180)
+                        path.lineTo(xDir * maxLength * ratio, yDir * maxLength * ratio)
+                    }
+                    path.close()
+
+                    mHandFillPaint.color = color
+                    canvas.drawPath(path, mHandFillPaint)
+                }
+            }
+
+            drawHourlyGraph(pressures, HOUR_LENGTH, PRESSURE_FILL_COLOR)
+            drawHourlyGraph(temperatures, MINUTE_LENGTH, TEMPERATURE_FILL_COLOR)
+
+            for (segment in segments) {
+                var thickness = WEATHER_RING_THICKNESS
+                var color = 0
+                //val len = WEATHER_RING_THICKNESS
+
+                if (segment.precipExpectation >= MIN_DISPLAY_PRECIP) {
+                    thickness = WEATHER_RING_THICKNESS +
+                            (WEATHER_RING_MAX_THICKNESS-WEATHER_RING_THICKNESS) * segment.precipExpectation / MAX_RAIN
+                    color = if (segment.day) { RAIN_COLOR } else { DARK_RAIN_COLOR }
+                } else {
+                    color = if (segment.day) {
+                        interpolateColor(CLOUD_COLOR, CLEAR_COLOR, segment.cloudCover)
+                    } else {
+                        interpolateColor(DARK_CLOUD_COLOR, DARK_CLEAR_COLOR, segment.cloudCover)
+                    }
+                }
+
+                /*
+                 * Add an extra ARC_EPSILON*WEATHER_RING_RADIUS to make sure segments overlap very slightly and avoid
+                 * minor artefacts.
+                 */
+                val path = arcPath(
+                    segment.startAngle-ARC_EPSILON*WEATHER_RING_RADIUS,
+                    segment.sweepAngle+2*ARC_EPSILON*WEATHER_RING_RADIUS,
+                    WEATHER_RING_RADIUS-thickness/2f,
+                    WEATHER_RING_RADIUS+thickness/2f)
+                mHandFillPaint.color = color // TODO rename this paint and maybe merge with others?
+                canvas.drawPath(path, mHandFillPaint)
+            }
+
+            canvas.restore()
         }
 
         /**
@@ -804,10 +855,6 @@ class Annulus : CanvasWatchFaceService() {
             canvas.drawPath(hourHandPath, mHandFillPaint)
 
             if (weatherData.currentPressure != null) {
-                /* Display pressures from 980 to 1040 hPa */
-                fun pressureToRatio(pressure: Double): Float =
-                    ((pressure.toFloat()-980f)/(1040f-980f)).coerceIn(0f, 1f)
-
                 val hourPressureLength = HOUR_LENGTH * pressureToRatio(weatherData.currentPressure)
 
                 /* Green to show the pressure. */
@@ -882,10 +929,6 @@ class Annulus : CanvasWatchFaceService() {
             canvas.drawPath(minuteHandPath, mHandFillPaint)
 
             if (weatherData.currentTemperature != null) {
-                /* Display temperatures from -10 to 30 degrees */
-                fun temperatureToRatio(temperature: Double): Float =
-                    ((temperature.toFloat() + 10f) / (10f + 30f)).coerceIn(0f, 1f)
-
                 val minuteTemperatureLength = MINUTE_LENGTH * temperatureToRatio(weatherData.currentTemperature)
 
                 /* Red to show the temperature. */
