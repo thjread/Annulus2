@@ -23,6 +23,7 @@ import android.view.WindowInsets
 import thjread.annulus.WeatherService
 
 import java.lang.ref.WeakReference
+import java.nio.file.WatchService
 import java.util.Calendar
 import java.util.TimeZone
 import kotlin.math.PI
@@ -44,7 +45,6 @@ private const val MSG_UPDATE_TIME = 0
 /**
  * Colors and dimensions for the watchface
  */
-// TODO move these to a values file
 private const val BACKGROUND_COLOR = Color.BLACK
 private val BACKGROUND_COLOR_LIGHT = Color.rgb(22, 22, 22)
 
@@ -168,19 +168,6 @@ class PermissionActivity() : Activity() {
     }
 }
 
-/**
- * Analog watch face with a ticking second hand. In ambient mode, the second hand isn't
- * shown. On devices with low-bit ambient mode, the hands are drawn without anti-aliasing in ambient
- * mode. The watch face is drawn with less contrast in mute mode.
- *
- *
- * Important Note: Because watch face apps do not have a default Activity in
- * their project, you will need to set your Configurations to
- * "Do not launch Activity" for both the Wear and/or Application modules. If you
- * are unsure how to do this, please review the "Run Starter project" section
- * in the Google Watch Face Code Lab:
- * https://codelabs.developers.google.com/codelabs/watchface/index.html#0
- */
 class Annulus : CanvasWatchFaceService() {
 
     private var mCalendarDataSource: CalendarDataSource? = null
@@ -216,7 +203,6 @@ class Annulus : CanvasWatchFaceService() {
     }
 
     data class WeatherRingSegment (val startAngle: Float, val sweepAngle: Float, val precipExpectation: Float, val cloudCover: Float, val day: Boolean)
-    // TODO precipProbability or precipIntensityError?
 
     /**
      * Weather data which is passed to the watchface drawing function.
@@ -229,9 +215,8 @@ class Annulus : CanvasWatchFaceService() {
                 val tickParams = MutableList(60) { Pair(0f, FIVE_DEGREES_COLOR) }
 
                 /* Only pass tickParams if there is sufficient rain in the next hour */
-                // TODO also check sufficient data available
                 var showRain = false
-                if (data?.minutely != null) {
+                if (data?.minutely != null && data.minutely.data.size >= 40) {
 
                     calendar.timeInMillis = now
                     val currentMinute = calendar.get(Calendar.MINUTE)
@@ -274,6 +259,7 @@ class Annulus : CanvasWatchFaceService() {
     }
 
     inner class Engine : CanvasWatchFaceService.Engine() {
+
         private lateinit var mCalendar: Calendar
 
         private var mRegisteredTimeZoneReceiver = false
@@ -284,7 +270,7 @@ class Annulus : CanvasWatchFaceService() {
         private var mChinSize: Float = 0F
 
         private lateinit var mFillPaint: Paint
-        private lateinit var mScreenPaint: Paint
+        private lateinit var mLightenPaint: Paint
         private lateinit var mHandStrokePaint: Paint
         private lateinit var mTickPaint: Paint
         private lateinit var mCalendarPaint: Paint
@@ -359,7 +345,6 @@ class Annulus : CanvasWatchFaceService() {
         }
 
         private fun initializeWatchFace() {
-
             /* Set color before each use */
             mFillPaint = Paint().apply {
                 strokeWidth = 0f
@@ -368,7 +353,7 @@ class Annulus : CanvasWatchFaceService() {
             }
 
             /* Set color before each use */
-            mScreenPaint = Paint().apply {
+            mLightenPaint = Paint().apply {
                 strokeWidth = 0f
                 isAntiAlias = true
                 style = Paint.Style.FILL
@@ -389,6 +374,7 @@ class Annulus : CanvasWatchFaceService() {
                 style = Paint.Style.STROKE
             }
 
+            /* Should set color before each use */
             mCalendarPaint = Paint().apply {
                 strokeWidth = CALENDAR_THICKNESS
                 isAntiAlias = true
@@ -396,30 +382,21 @@ class Annulus : CanvasWatchFaceService() {
                 style = Paint.Style.STROKE
             }
 
-            /* Set colors */
             updateWatchHandStyle()
         }
 
         private fun updateWatchHandStyle() {
-            // TODO clean this up
+            // TODO also change colors?
 
-            if (mAmbient) {
-                mHandStrokePaint.color = Color.WHITE
-                mTickPaint.color = Color.WHITE
-
-                if (mLowBitAmbient) {
-                    mFillPaint.isAntiAlias = false
-                    mScreenPaint.isAntiAlias = false
-                    mHandStrokePaint.isAntiAlias = false
-                    mTickPaint.isAntiAlias = false
-                    mCalendarPaint.isAntiAlias = false
-                }
+            if (mAmbient && mLowBitAmbient) {
+                mFillPaint.isAntiAlias = false
+                mLightenPaint.isAntiAlias = false
+                mHandStrokePaint.isAntiAlias = false
+                mTickPaint.isAntiAlias = false
+                mCalendarPaint.isAntiAlias = false
             } else {
-                mHandStrokePaint.color = WATCH_HAND_COLOR
-                mTickPaint.color = WATCH_HAND_COLOR
-
                 mFillPaint.isAntiAlias = true
-                mScreenPaint.isAntiAlias = true
+                mLightenPaint.isAntiAlias = true
                 mHandStrokePaint.isAntiAlias = true
                 mTickPaint.isAntiAlias = true
                 mCalendarPaint.isAntiAlias = true
@@ -460,17 +437,8 @@ class Annulus : CanvasWatchFaceService() {
 
         override fun onInterruptionFilterChanged(interruptionFilter: Int) {
             super.onInterruptionFilterChanged(interruptionFilter)
-            val inMuteMode = interruptionFilter == WatchFaceService.INTERRUPTION_FILTER_NONE
 
-            // TODO clean this up
-
-            /* Dim display in mute mode. */
-            if (mMuteMode != inMuteMode) {
-                mMuteMode = inMuteMode
-                mFillPaint.alpha = if (inMuteMode) 100 else 255
-                mHandStrokePaint.alpha = if (inMuteMode) 80 else 255
-                invalidate()
-            }
+            /* Could change watchface appearance based on interruption filter here */
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -498,7 +466,7 @@ class Annulus : CanvasWatchFaceService() {
 
         /**
          * Captures tap event (and tap type).
-         * Tapping manually triggers a calendar data update.
+         * Tapping manually triggers a calendar and weather data update.
          */
         override fun onTapCommand(tapType: Int, x: Int, y: Int, eventTime: Long) {
             when (tapType) {
@@ -610,11 +578,9 @@ class Annulus : CanvasWatchFaceService() {
 
                 val cloudCover = datum.cloudCover?.toFloat() ?: 0.0f
 
-                mCalendar.timeInMillis = begin
-                val startAngle = hourAngle(mCalendar)
+                val startAngle = hourAngle(begin)
 
-                mCalendar.timeInMillis = end
-                val endAngle = hourAngle(mCalendar)
+                val endAngle = hourAngle(end)
                 val sweepAngle = (endAngle + 360 - startAngle) % 360
 
                 return WeatherRingSegment(startAngle, sweepAngle, precipExpectation, cloudCover, day)
@@ -632,9 +598,9 @@ class Annulus : CanvasWatchFaceService() {
                     /*
                      * Add temperature and pressure for the next 12 hours to lists.
                      */
-                    if ((begin+end)/2 >= now && (begin+end)/2 < now + 12*DateUtils.HOUR_IN_MILLIS) {
-                        mCalendar.timeInMillis = (begin + end) / 2
-                        val midpointAngle = hourAngle(mCalendar)
+                    val midTime = (begin+end)/2
+                    if (midTime >= now && midTime < now + 12*DateUtils.HOUR_IN_MILLIS) {
+                        val midpointAngle = hourAngle(midTime)
                         if (datum.temperature != null) {
                             temperatures.add(Pair(midpointAngle, temperatureToRatio(datum.temperature)))
                         }
@@ -706,8 +672,7 @@ class Annulus : CanvasWatchFaceService() {
             fun drawHourlyGraph(dataPoints: MutableList<Pair<Float, Float>>, maxLength: Float, color: Int) {
                 if (dataPoints.isNotEmpty()) {
                     /* Avoid interpolating between first and last data points */
-                    mCalendar.timeInMillis = now
-                    val nowAngle = hourAngle(mCalendar)
+                    val nowAngle = hourAngle(now)
                     dataPoints.add(0, Pair(nowAngle, dataPoints[0].second))
                     dataPoints.add(Pair(nowAngle, dataPoints[dataPoints.size-1].second))
 
@@ -739,8 +704,8 @@ class Annulus : CanvasWatchFaceService() {
                     }
                     path.close()
 
-                    mScreenPaint.color = color
-                    canvas.drawPath(path, mScreenPaint)
+                    mLightenPaint.color = color
+                    canvas.drawPath(path, mLightenPaint)
                 }
             }
 
@@ -753,7 +718,6 @@ class Annulus : CanvasWatchFaceService() {
             for (segment in segments) {
                 var thickness = WEATHER_RING_THICKNESS
                 var color = 0
-                //val len = WEATHER_RING_THICKNESS
 
                 if (segment.precipExpectation >= MIN_DISPLAY_PRECIP) {
                     thickness = WEATHER_RING_THICKNESS +
@@ -786,21 +750,24 @@ class Annulus : CanvasWatchFaceService() {
         /**
          * Calculate angle of the watch hands in degrees.
          */
-        private fun secondAngle(calendar: Calendar): Float {
-            val seconds = calendar.get(Calendar.SECOND)
+        private fun secondAngle(timeInMillis: Long): Float {
+            mCalendar.timeInMillis = timeInMillis
+            val seconds = mCalendar.get(Calendar.SECOND)
             return seconds*6f
         }
-        private fun minuteAngle(calendar: Calendar): Float {
-            val seconds = calendar.get(Calendar.SECOND)
-            val minutes = calendar.get(Calendar.MINUTE)
+        private fun minuteAngle(timeInMillis: Long): Float {
+            mCalendar.timeInMillis = timeInMillis
+            val seconds = mCalendar.get(Calendar.SECOND)
+            val minutes = mCalendar.get(Calendar.MINUTE)
             val offset = seconds / 10f
             /* Face only updates once per minute in ambient mode, so want minute hand at a whole number of minutes. */
             return (minutes * 6f) +
                     if (mAmbient) 0f else offset
         }
-        private fun hourAngle(calendar: Calendar): Float {
-            val minutes = calendar.get(Calendar.MINUTE)
-            val hours = calendar.get(Calendar.HOUR)
+        private fun hourAngle(timeInMillis: Long): Float {
+            mCalendar.timeInMillis = timeInMillis
+            val minutes = mCalendar.get(Calendar.MINUTE)
+            val hours = mCalendar.get(Calendar.HOUR)
             val offset = minutes / 2f
             return hours * 30f + offset
         }
@@ -865,11 +832,9 @@ class Annulus : CanvasWatchFaceService() {
             /*
              * Calculate hand rotations.
              */
-
-            mCalendar.timeInMillis = now
-            val secondsRotation = secondAngle(mCalendar)
-            val minutesRotation = minuteAngle(mCalendar)
-            val hoursRotation = hourAngle(mCalendar)
+            val secondsRotation = secondAngle(now)
+            val minutesRotation = minuteAngle(now)
+            val hoursRotation = hourAngle(now)
 
             /*
              * Draw hour hand, with a barometer-style green bar showing the current pressure.
@@ -1030,11 +995,9 @@ class Annulus : CanvasWatchFaceService() {
                 val end = minOf(event.end,
                     now + DateUtils.HOUR_IN_MILLIS - (CALENDAR_GAP_MINUTES*DateUtils.MINUTE_IN_MILLIS).toLong())
 
-                mCalendar.timeInMillis = start
-                val startAngle = minuteAngle(mCalendar)
+                val startAngle = minuteAngle(start)
 
-                mCalendar.timeInMillis = end
-                val endAngle = minuteAngle(mCalendar)
+                val endAngle = minuteAngle(start)
 
                 val sweepAngle = (endAngle+360-startAngle) % 360
 
