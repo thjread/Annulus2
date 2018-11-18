@@ -1,6 +1,5 @@
 package thjread.annulus2
 
-import android.content.ContentResolver
 import android.content.Context
 import android.location.Location
 import android.text.format.DateUtils
@@ -20,9 +19,10 @@ import java.io.IOException
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 
-private const val WEATHER_UPDATE_FREQUENCY: Long = 10*DateUtils.MINUTE_IN_MILLIS
-private const val WEATHER_RETRY_UPDATE_TIME: Long = 2*DateUtils.MINUTE_IN_MILLIS
-// TODO Update more frequently when raining
+private const val WEATHER_UPDATE_TIME = 10*DateUtils.MINUTE_IN_MILLIS
+private const val WEATHER_FAST_UPDATE_TIME = 3*DateUtils.MINUTE_IN_MILLIS
+private const val WEATHER_RETRY_UPDATE_TIME = 3*DateUtils.MINUTE_IN_MILLIS
+private const val FAST_UPDATE_RAIN_THRESHOLD = 0.05
 
 class WeatherDataSource(private val context: Context) {
 
@@ -32,6 +32,8 @@ class WeatherDataSource(private val context: Context) {
         private set
 
     private var mLastTriedUpdate: Long = 0
+
+    private var mRaining: Boolean = false
 
     private val mWeatherDataService = Retrofit.Builder()
         .baseUrl("https://api.forecast.io")
@@ -59,7 +61,7 @@ class WeatherDataSource(private val context: Context) {
         for (event in channel) {
             val now = System.currentTimeMillis()
             /* Rate limit if updates are failing */
-            if (now >= mLastTriedUpdate + WEATHER_RETRY_UPDATE_TIME) {
+            if (now - mLastTriedUpdate > WEATHER_RETRY_UPDATE_TIME ) {
                 mLastTriedUpdate = now
                 fetchWeatherData()?.let{ data ->
                     mWeatherData = data
@@ -78,10 +80,12 @@ class WeatherDataSource(private val context: Context) {
     }
 
     /**
-     * Asks for a weather data update if data is more than WEATHER_UPDATE_FREQUENCY out of date
+     * Asks for a weather data update if data is more than WEATHER_UPDATE_TIME out of date, or WEATHER_FAST_UPDATE_TIME
+     * if there's rain forecast in the next hour.
      */
     fun updateWeatherDataIfStale() {
-        if (System.currentTimeMillis() - mLastUpdated > WEATHER_UPDATE_FREQUENCY) {
+        if (System.currentTimeMillis() - mLastUpdated >
+            if (mRaining) { WEATHER_FAST_UPDATE_TIME } else { WEATHER_UPDATE_TIME } ) {
             updateWeatherData()
         }
     }
@@ -98,7 +102,22 @@ class WeatherDataSource(private val context: Context) {
                 val call = mWeatherDataService.getWeatherData(sForecastAPIKey, location.latitude, location.longitude)
                 try {
                     val response = call.execute()
-                    response.body()
+                    val data = response.body()
+
+                    /* Check if rain is forecast in the next hour */
+                    mRaining = false
+
+                    if (data?.minutely != null) {
+                        for (datum in data.minutely.data) {
+                            if (datum.precipIntensity != null && datum.precipIntensity >= FAST_UPDATE_RAIN_THRESHOLD) {
+                                mRaining = true
+                                Log.d("Weather", "Increasing update frequency, rain forecast in the next hour")
+                                break
+                            }
+                        }
+                    }
+
+                    data
                 } catch (e: IOException) {
                     Log.e("Weather", "Failed to get a well-formed response from Forecast API: ${e.message}")
                     null
