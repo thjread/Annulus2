@@ -80,9 +80,9 @@ private const val INNER_CIRCLE_RADIUS = CENTER_CIRCLE_RADIUS - MINUTE_BORDER_THI
 
 private val GAUGE_BACKGROUND_COLOR = Color.rgb(50, 50, 50)
 private val TEMPERATURE_COLOR = Color.rgb(211, 47, 47)
-private val TEMPERATURE_FILL_COLOR = Color.argb(80, 230, 81, 0)
+private val TEMPERATURE_FILL_COLOR = Color.argb(100, 230, 81, 0)
 private val PRESSURE_COLOR = Color.rgb(0, 121, 107)
-private val PRESSURE_FILL_COLOR = Color.argb(80, 0, 131, 143)
+private val PRESSURE_FILL_COLOR = Color.argb(100, 0, 151, 167)
 private val ZERO_DEGREES_COLOR = Color.rgb(127, 219, 255)
 private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)
 private const val ZERO_DEGREES_THICKNESS = 0.03f
