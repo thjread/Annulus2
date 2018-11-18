@@ -21,8 +21,8 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 
 private const val WEATHER_UPDATE_FREQUENCY: Long = 10*DateUtils.MINUTE_IN_MILLIS
+private const val WEATHER_RETRY_UPDATE_TIME: Long = 2*DateUtils.MINUTE_IN_MILLIS
 // TODO Update more frequently when raining
-// TODO Add rate limiting if updates fail
 
 class WeatherDataSource(private val context: Context) {
 
@@ -30,6 +30,8 @@ class WeatherDataSource(private val context: Context) {
 
     var mLastUpdated: Long = 0
         private set
+
+    private var mLastTriedUpdate: Long = 0
 
     private val mWeatherDataService = Retrofit.Builder()
         .baseUrl("https://api.forecast.io")
@@ -55,9 +57,14 @@ class WeatherDataSource(private val context: Context) {
         Log.d("Weather", "Initialized Weather actor")
 
         for (event in channel) {
-            fetchWeatherData()?.let{ data ->
-                mWeatherData = data
-                mLastUpdated = System.currentTimeMillis()
+            val now = System.currentTimeMillis()
+            /* Rate limit if updates are failing */
+            if (now >= mLastTriedUpdate + WEATHER_RETRY_UPDATE_TIME) {
+                mLastTriedUpdate = now
+                fetchWeatherData()?.let{ data ->
+                    mWeatherData = data
+                    mLastUpdated = System.currentTimeMillis()
+                }
             }
         }
     }
