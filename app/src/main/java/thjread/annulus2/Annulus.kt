@@ -23,7 +23,6 @@ import android.view.WindowInsets
 import thjread.annulus.WeatherService
 
 import java.lang.ref.WeakReference
-import java.nio.file.WatchService
 import java.util.Calendar
 import java.util.TimeZone
 import kotlin.math.PI
@@ -43,7 +42,7 @@ private const val INTERACTIVE_UPDATE_RATE_MS = 1000
 private const val MSG_UPDATE_TIME = 0
 
 /**
- * Colors and dimensions for the watchface
+ * Colors and dimensions for the watchface.
  */
 private const val BACKGROUND_COLOR = Color.BLACK
 private val BACKGROUND_COLOR_LIGHT = Color.rgb(22, 22, 22)
@@ -108,7 +107,7 @@ private const val MIN_DISPLAY_PRECIP = 0.09f
 
 private val RAIN_COLOR = Color.rgb(100, 181, 246)
 private val CLEAR_COLOR = Color.rgb(255, 213, 79)
-private val CLOUD_COLOR = Color.WHITE
+private const val CLOUD_COLOR = Color.WHITE
 private val DARK_RAIN_COLOR = Color.rgb(13, 71, 161)
 private val DARK_CLEAR_COLOR = Color.rgb(66, 66, 66)
 private val DARK_CLOUD_COLOR = Color.rgb(158, 158, 158)
@@ -123,8 +122,8 @@ private const val KEY_PERMISSIONS_GRANTED = "KEY_PERMISSIONS_GRANTED"
 /**
  * Need an Activity to request permissions. Communicates back to Service using a ResultReceiver passed in the Intent.
  */
-class PermissionActivity() : Activity() {
-    var mPermissionsGranted = BooleanArray(3)
+class PermissionActivity : Activity() {
+    private var mPermissionsGranted = BooleanArray(3)
 
     private val PERMISSIONS = arrayOf(
         android.Manifest.permission.READ_CALENDAR,
@@ -194,10 +193,10 @@ class Annulus : CanvasWatchFaceService() {
         /**
          * Utility function for interpolating between two colors.
          */
-        private fun interpolateColor(a: Int, b:  Int, ratio: Float): Int {
-            val r = (Color.red(a)*ratio + Color.red(b)*(1f-ratio)).toInt()
-            val g = (Color.green(a)*ratio + Color.green(b)*(1f-ratio)).toInt()
-            val b = (Color.blue(a)*ratio + Color.blue(b)*(1f-ratio)).toInt()
+        private fun interpolateColor(first: Int, second:  Int, ratio: Float): Int {
+            val r = (Color.red(first)*ratio + Color.red(second)*(1f-ratio)).toInt()
+            val g = (Color.green(first)*ratio + Color.green(second)*(1f-ratio)).toInt()
+            val b = (Color.blue(first)*ratio + Color.blue(second)*(1f-ratio)).toInt()
             return Color.rgb(r, g, b)
         }
     }
@@ -263,7 +262,6 @@ class Annulus : CanvasWatchFaceService() {
         private lateinit var mCalendar: Calendar
 
         private var mRegisteredTimeZoneReceiver = false
-        private var mMuteMode: Boolean = false
         private var mCenterX: Float = 0F
         private var mCenterY: Float = 0F
         private var mRadius: Float = 0F
@@ -545,7 +543,7 @@ class Annulus : CanvasWatchFaceService() {
         /**
          * Display temperatures from -10 to 30 degrees.
          */
-        fun temperatureToRatio(temperature: Double, rangeMax: Float = 1f): Float =
+        private fun temperatureToRatio(temperature: Double, rangeMax: Float = 1f): Float =
             ((temperature.toFloat() + 10f) / (10f + 30f)).coerceIn(0f, rangeMax)
 
         /**
@@ -719,7 +717,7 @@ class Annulus : CanvasWatchFaceService() {
              */
             for (segment in segments) {
                 var thickness = WEATHER_RING_THICKNESS
-                var color = 0
+                var color: Int
 
                 if (segment.precipExpectation >= MIN_DISPLAY_PRECIP) {
                     thickness = WEATHER_RING_THICKNESS +
@@ -996,10 +994,8 @@ class Annulus : CanvasWatchFaceService() {
                 val start = maxOf(event.begin, now)
                 val end = minOf(event.end,
                     now + DateUtils.HOUR_IN_MILLIS - (CALENDAR_GAP_MINUTES*DateUtils.MINUTE_IN_MILLIS).toLong())
-
                 val startAngle = minuteAngle(start)
-
-                val endAngle = minuteAngle(start)
+                val endAngle = minuteAngle(end)
 
                 val sweepAngle = (endAngle+360-startAngle) % 360
 
