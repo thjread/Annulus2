@@ -25,10 +25,8 @@ import thjread.annulus.WeatherService
 import java.lang.ref.WeakReference
 import java.util.Calendar
 import java.util.TimeZone
-import kotlin.math.PI
-import kotlin.math.atan
-import kotlin.math.cos
-import kotlin.math.sin
+import kotlin.math.*
+import kotlin.random.Random
 
 /**
  * Updates rate in milliseconds for interactive mode. We update once a second to advance the
@@ -104,13 +102,17 @@ private const val WEATHER_RING_RADIUS = 4f/9f
 private const val ARC_EPSILON = 0.8f
 private const val MAX_RAIN = 8f
 private const val MIN_DISPLAY_PRECIP = 0.09f
+private const val MAX_STARS_CLOUD_COVER = 0.4f
+private const val STAR_BORDER_EPSILON = 0.006f
+private const val MAX_STARS = 15
 
-private val RAIN_COLOR = Color.rgb(100, 181, 246)
+private val RAIN_COLOR = Color.rgb(2, 136, 209)//Color.rgb(100, 181, 246)
 private val CLEAR_COLOR = Color.rgb(255, 213, 79)
 private const val CLOUD_COLOR = Color.WHITE
 private val DARK_RAIN_COLOR = Color.rgb(13, 71, 161)
-private val DARK_CLEAR_COLOR = Color.rgb(66, 66, 66)
-private val DARK_CLOUD_COLOR = Color.rgb(158, 158, 158)
+private val DARK_CLEAR_COLOR = Color.rgb(40, 40, 40)
+private val DARK_CLOUD_COLOR = Color.rgb(130, 130, 130)
+private val STAR_COLOR = CLEAR_COLOR
 
 /**
  * Code to tell ResultReceiver that calendar permission is granted, and key to pass ResultReceiver in Intent.
@@ -200,8 +202,6 @@ class Annulus : CanvasWatchFaceService() {
             return Color.rgb(r, g, b)
         }
     }
-
-    data class WeatherRingSegment (val startAngle: Float, val sweepAngle: Float, val precipExpectation: Float, val cloudCover: Float, val day: Boolean)
 
     /**
      * Weather data which is passed to the watchface drawing function.
@@ -567,6 +567,9 @@ class Annulus : CanvasWatchFaceService() {
                 }
             }
 
+            data class WeatherRingSegment (val startAngle: Float, val sweepAngle: Float, val precipExpectation: Float,
+                                           val cloudCover: Float, val day: Boolean)
+
             fun createWeatherRingSegment(begin: Long, end: Long, datum: WeatherService.Datum, day: Boolean): WeatherRingSegment {
                 val precipExpectation = if (datum.precipProbability != null && datum.precipIntensity != null) {
                     (datum.precipProbability * datum.precipIntensity).toFloat()
@@ -709,8 +712,8 @@ class Annulus : CanvasWatchFaceService() {
                 }
             }
 
-            drawHourlyGraph(pressures, HOUR_LENGTH, PRESSURE_FILL_COLOR)
             drawHourlyGraph(temperatures, MINUTE_LENGTH, TEMPERATURE_FILL_COLOR)
+            drawHourlyGraph(pressures, HOUR_LENGTH, PRESSURE_FILL_COLOR)
 
             /*
              * Draw weather data ring.
@@ -732,6 +735,29 @@ class Annulus : CanvasWatchFaceService() {
                 }
 
                 /*
+                 * Draw gold stars if the cloud cover at night is less than MAX_STARS_CLOUD_COVER.
+                 */
+                val stars: List<Pair<Float, Float>>? = if (!segment.day && segment.cloudCover < MAX_STARS_CLOUD_COVER) {
+                    val stars: MutableList<Pair<Float, Float>> = mutableListOf()
+                    val numStars = ceil((1f - segment.cloudCover/MAX_STARS_CLOUD_COVER) * MAX_STARS).toInt()
+
+                    /* Stop stars sticking out at edges */
+                    val spread = thickness - STAR_BORDER_EPSILON*2
+
+                    /* Seed random number generator to keep stars from jumping each second, but ensure general variation. */
+                    val random = Random(segment.startAngle.toInt()+numStars)
+
+                    for (i in 0 until numStars) {
+                        val pos = Pair(segment.startAngle + random.nextFloat()*segment.sweepAngle,
+                            random.nextFloat()*spread - spread/2f)
+                        stars.add(pos)
+                    }
+                    stars
+                } else {
+                    null
+                }
+
+                /*
                  * Add an extra ARC_EPSILON*WEATHER_RING_RADIUS to make sure segments overlap very slightly and avoid
                  * minor artefacts.
                  */
@@ -742,6 +768,17 @@ class Annulus : CanvasWatchFaceService() {
                     WEATHER_RING_RADIUS+thickness/2f)
                 mFillPaint.color = color
                 canvas.drawPath(path, mFillPaint)
+
+                if (stars != null) {
+                    mFillPaint.color = STAR_COLOR
+                    for (pos in stars) {
+                        // TODO write generic function for polar to cartesians
+                        val xDir = sin(pos.first*PI.toFloat()/180f)
+                        val yDir = -cos(pos.first*PI.toFloat()/180f)
+                        val radius = WEATHER_RING_RADIUS + pos.second
+                        canvas.drawCircle(xDir * radius, yDir * radius, 1f/mRadius, mFillPaint)
+                    }
+                }
             }
 
             canvas.restore()
