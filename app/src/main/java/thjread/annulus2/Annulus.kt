@@ -241,9 +241,11 @@ class Annulus : CanvasWatchFaceService() {
                         /* Shrink the last few minutes of the hour to show clearly that they represent the future and not
                          * the past.
                          */
-                        val lengthMultiplier = when {
-                            minutesFromNow >= 56 ->  (4f-(minutesFromNow.toFloat()-56f))/4f
-                            minutesFromNow == 0 -> 0f
+                        val lengthMultiplier = when (minutesFromNow) {
+                            57 -> 0.66f
+                            58 -> 0.33f
+                            59 -> 0f
+                            0 -> 0f
                             else -> 1f
                         }
                         val color = Annulus.interpolateColor(RAIN_COLOR, FIVE_DEGREES_COLOR, precipProbability.toFloat())
@@ -838,14 +840,16 @@ class Annulus : CanvasWatchFaceService() {
                     tickLength *= scale
                 }
 
-                val innerX = Math.sin(tickRot).toFloat() * (outerTickRadius-tickLength)
-                val innerY = (-Math.cos(tickRot)).toFloat() * (outerTickRadius-tickLength)
-                val outerX = Math.sin(tickRot).toFloat() * outerTickRadius
-                val outerY = (-Math.cos(tickRot)).toFloat() * outerTickRadius
-                canvas.drawLine(
-                    innerX, innerY,
-                    outerX, outerY, mTickPaint
-                )
+                if (tickLength > 0) { /* Otherwise draws a dot even at length 0 */
+                    val innerX = Math.sin(tickRot).toFloat() * (outerTickRadius - tickLength)
+                    val innerY = (-Math.cos(tickRot)).toFloat() * (outerTickRadius - tickLength)
+                    val outerX = Math.sin(tickRot).toFloat() * outerTickRadius
+                    val outerY = (-Math.cos(tickRot)).toFloat() * outerTickRadius
+                    canvas.drawLine(
+                        innerX, innerY,
+                        outerX, outerY, mTickPaint
+                    )
+                }
             }
 
             /*
