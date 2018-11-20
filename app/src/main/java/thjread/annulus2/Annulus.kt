@@ -114,6 +114,49 @@ private val DARK_CLEAR_COLOR = Color.rgb(40, 40, 40)
 private val DARK_CLOUD_COLOR = Color.rgb(130, 130, 130)
 private val STAR_COLOR = CLEAR_COLOR
 
+/*
+ * Mean longitudes (in degrees) of the eight planets and pluto at epoch J2000
+ * (data from https://ssd.jpl.nasa.gov/txt/p_elem_t1.txt).
+ */
+private val J2000_MEAN_LONGITUDES = arrayOf(
+    252.25032350,
+    181.97909950,
+    100.46457166,
+    -4.55343205,
+    34.39644051,
+    49.95424423,
+    313.23810451,
+    -55.12002969,
+    238.92903833
+)
+/* Rate of change of mean longitude in degrees per Julian century. */
+private val MEAN_LONGITUDE_RATES = arrayOf(
+    149472.67411175,
+    58517.81538729,
+    35999.37244981,
+    19140.30268499,
+    3034.74612775,
+    1222.49362201,
+    428.48202785,
+    218.45945325,
+    145.20780515
+)
+private const val J2000 = 946727936L*DateUtils.SECOND_IN_MILLIS
+
+private const val PLANET_ELLIPSE_THICKNESS = 2f/9f
+private const val PLANET_COLOR_ALPHA = 100
+private val PLANET_COLORS = arrayOf(
+    Color.argb(PLANET_COLOR_ALPHA, 109, 76, 65),
+    Color.argb(PLANET_COLOR_ALPHA, 255, 235, 59),
+    Color.argb(PLANET_COLOR_ALPHA, 67, 160, 71),
+    Color.argb(PLANET_COLOR_ALPHA, 183, 28, 28),
+    Color.argb(PLANET_COLOR_ALPHA, 230, 74, 25),
+    Color.argb(PLANET_COLOR_ALPHA, 255, 160, 0),
+    Color.argb(PLANET_COLOR_ALPHA, 41, 182, 246),
+    Color.argb(PLANET_COLOR_ALPHA, 21, 101, 192),
+    Color.argb(PLANET_COLOR_ALPHA, 81, 45, 168)
+)
+
 /**
  * Code to tell ResultReceiver that calendar permission is granted, and key to pass ResultReceiver in Intent.
  */
@@ -282,7 +325,7 @@ class Annulus : CanvasWatchFaceService() {
         private var mLowBitAmbient: Boolean = false
         private var mBurnInProtection: Boolean = false
 
-        /* Constrols whether to display calendar data or weather data */
+        /* Controls whether to display calendar data or weather data */
         private var mCalendarMode = false
 
         /* Handler to update the time once a second in interactive mode. */
@@ -504,7 +547,7 @@ class Annulus : CanvasWatchFaceService() {
 
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
 
-            drawBackground(canvas)
+            drawBackground(canvas, now)
 
             if (mCalendarMode) {
                 if (nextHourResponse != null) {
@@ -526,9 +569,11 @@ class Annulus : CanvasWatchFaceService() {
         }
 
         /**
-         * Draw concentric circles in the background (for decoration, and to show temperature scale).
+         * In weather mode, concentric circles in the background (for decoration, and to show temperature scale).
+         * In calendar mode, draw 30 degree sectors in the background, and ellipses representing the positions of the
+         * planets (and Pluto).
          */
-        private fun drawBackground (canvas: Canvas) {
+        private fun drawBackground (canvas: Canvas, now: Long) {
             fun annulusPath(innerRadius: Float, outerRadius: Float): Path {
                 val p = Path()
                 p.addCircle(0f, 0f, outerRadius, Path.Direction.CW)
@@ -536,15 +581,48 @@ class Annulus : CanvasWatchFaceService() {
                 return p
             }
 
+            fun planetLongitude(now: Long, planet: Int): Double {
+                assert(planet in 0 until 9)
+                val centiYearsSinceJ2000 = (now-J2000)/(100.0*365.25*86400*DateUtils.SECOND_IN_MILLIS)
+                val meanLongitude = J2000_MEAN_LONGITUDES[planet] + MEAN_LONGITUDE_RATES[planet]*centiYearsSinceJ2000
+                return meanLongitude
+            }
+
             /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
             canvas.save()
             canvas.translate(mCenterX, mCenterY)
             canvas.scale(mRadius, mRadius, 0f, 0f)
 
-            for (i in 0 until 9 step 2) {
-                val annulusPath = annulusPath(i*1f/9f, (i+1)*1f/9f)
+            if (mCalendarMode) {
                 mFillPaint.color = BACKGROUND_COLOR_LIGHT
-                canvas.drawPath(annulusPath, mFillPaint)
+                for (i in 0 until 12 step 2) {
+                    canvas.drawArc(RectF(-1f, -1f, 1f, 1f), i*30f, 30f, true, mFillPaint)
+                }
+
+                for (i in 8 downTo 0) {
+                    /* Longitude is measured anticlockwise, angle is clockwise. */
+                    val angle = -planetLongitude(now, i).toFloat()
+                    canvas.rotate(angle)
+                    mFillPaint.color = PLANET_COLORS[i]
+                    /* Draw ellipse with foci at centre and (i+1)/9. */
+                    val semiMinorAxis = PLANET_ELLIPSE_THICKNESS/2f
+                    val centreToFocus = ((i+1)/9f)/2f
+                    val semiMajorAxis = sqrt(semiMinorAxis*semiMinorAxis + centreToFocus*centreToFocus)
+                    canvas.drawOval(
+                        RectF(
+                            -semiMinorAxis, -(centreToFocus+semiMajorAxis),
+                            semiMinorAxis, -(centreToFocus-semiMajorAxis)
+                        ),
+                        mFillPaint
+                    )
+                    canvas.rotate(-angle)
+                }
+            } else {
+                mFillPaint.color = BACKGROUND_COLOR_LIGHT
+                for (i in 0 until 9 step 2) {
+                    val annulusPath = annulusPath(i*1f/9f, (i+1)*1f/9f)
+                    canvas.drawPath(annulusPath, mFillPaint)
+                }
             }
 
             canvas.restore()
