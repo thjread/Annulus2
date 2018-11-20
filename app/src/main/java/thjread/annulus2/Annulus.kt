@@ -787,7 +787,6 @@ class Annulus : CanvasWatchFaceService() {
                 if (stars != null) {
                     mFillPaint.color = STAR_COLOR
                     for (pos in stars) {
-                        // TODO write generic function for polar to cartesians
                         val xDir = sin(pos.first*PI.toFloat()/180f)
                         val yDir = -cos(pos.first*PI.toFloat()/180f)
                         val radius = WEATHER_RING_RADIUS + pos.second
@@ -854,9 +853,9 @@ class Annulus : CanvasWatchFaceService() {
                 }
 
                 if (tickLength > 0) { /* Otherwise draws a dot even at length 0 */
-                    val innerX = Math.sin(tickRot).toFloat() * (outerTickRadius - tickLength)
+                    val innerX = sin(tickRot).toFloat() * (outerTickRadius - tickLength)
                     val innerY = (-Math.cos(tickRot)).toFloat() * (outerTickRadius - tickLength)
-                    val outerX = Math.sin(tickRot).toFloat() * outerTickRadius
+                    val outerX = sin(tickRot).toFloat() * outerTickRadius
                     val outerY = (-Math.cos(tickRot)).toFloat() * outerTickRadius
                     canvas.drawLine(
                         innerX, innerY,
