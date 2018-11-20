@@ -314,9 +314,8 @@ class Annulus : CanvasWatchFaceService() {
         private var mChinSize: Float = 0F
 
         private lateinit var mFillPaint: Paint
-        private lateinit var mHandStrokePaint: Paint
-        private lateinit var mTickPaint: Paint
-        private lateinit var mCalendarPaint: Paint
+        private lateinit var mStrokePaint: Paint
+        private lateinit var mRoundStrokePaint: Paint
 
         private var mAmbient: Boolean = false
         private var mLowBitAmbient: Boolean = false
@@ -399,24 +398,16 @@ class Annulus : CanvasWatchFaceService() {
             }
 
             /* Set color, strokeWidth before each use */
-            mHandStrokePaint = Paint().apply {
+            mStrokePaint = Paint().apply {
                 isAntiAlias = true
                 strokeCap = Paint.Cap.BUTT
                 style = Paint.Style.STROKE
             }
 
-            /* Should set strokeWidth before each use */
-            mTickPaint = Paint().apply {
+            /* Should set color, strokeWidth before each use */
+            mRoundStrokePaint = Paint().apply {
                 isAntiAlias = true
                 strokeCap = Paint.Cap.ROUND
-                style = Paint.Style.STROKE
-            }
-
-            /* Should set color before each use */
-            mCalendarPaint = Paint().apply {
-                strokeWidth = CALENDAR_THICKNESS
-                isAntiAlias = true
-                strokeCap = Paint.Cap.BUTT
                 style = Paint.Style.STROKE
             }
 
@@ -428,14 +419,12 @@ class Annulus : CanvasWatchFaceService() {
 
             if (mAmbient && mLowBitAmbient) {
                 mFillPaint.isAntiAlias = false
-                mHandStrokePaint.isAntiAlias = false
-                mTickPaint.isAntiAlias = false
-                mCalendarPaint.isAntiAlias = false
+                mStrokePaint.isAntiAlias = false
+                mRoundStrokePaint.isAntiAlias = false
             } else {
                 mFillPaint.isAntiAlias = true
-                mHandStrokePaint.isAntiAlias = true
-                mTickPaint.isAntiAlias = true
-                mCalendarPaint.isAntiAlias = true
+                mStrokePaint.isAntiAlias = true
+                mRoundStrokePaint.isAntiAlias = true
             }
         }
 
@@ -888,12 +877,12 @@ class Annulus : CanvasWatchFaceService() {
                 var tickLength: Float
                 if (tickIndex % 5 == 0) {
                     tickLength = MAJOR_TICK_LENGTH
-                    mTickPaint.color = weatherData.tickParams?.get(tickIndex)?.second ?: MAJOR_TICK_COLOR
-                    mTickPaint.strokeWidth = MAJOR_TICK_THICKNESS
+                    mRoundStrokePaint.color = weatherData.tickParams?.get(tickIndex)?.second ?: MAJOR_TICK_COLOR
+                    mRoundStrokePaint.strokeWidth = MAJOR_TICK_THICKNESS
                 } else {
                     tickLength = weatherData.tickParams?.get(tickIndex)?.first ?: MINOR_TICK_LENGTH
-                    mTickPaint.color = weatherData.tickParams?.get(tickIndex)?.second ?: MINOR_TICK_COLOR
-                    mTickPaint.strokeWidth = MINOR_TICK_THICKNESS
+                    mRoundStrokePaint.color = weatherData.tickParams?.get(tickIndex)?.second ?: MINOR_TICK_COLOR
+                    mRoundStrokePaint.strokeWidth = MINOR_TICK_THICKNESS
                 }
                 val tickRot = (tickIndex.toDouble() * Math.PI * 2.0 / 60)
                 if (-Math.cos(tickRot)*OUTER_TICK_RADIUS > (mCenterY-mChinSize)/mRadius) {
@@ -909,7 +898,7 @@ class Annulus : CanvasWatchFaceService() {
                     val outerY = (-Math.cos(tickRot)).toFloat() * outerTickRadius
                     canvas.drawLine(
                         innerX, innerY,
-                        outerX, outerY, mTickPaint
+                        outerX, outerY, mRoundStrokePaint
                     )
                 }
             }
@@ -968,9 +957,9 @@ class Annulus : CanvasWatchFaceService() {
                 )
 
                 /* White border */
-                mHandStrokePaint.color = WATCH_HAND_COLOR
-                mHandStrokePaint.strokeWidth = HOUR_BORDER_THICKNESS
-                canvas.drawPath(hourHandPath, mHandStrokePaint)
+                mStrokePaint.color = WATCH_HAND_COLOR
+                mStrokePaint.strokeWidth = HOUR_BORDER_THICKNESS
+                canvas.drawPath(hourHandPath, mStrokePaint)
             }
 
             canvas.restore()
@@ -982,8 +971,8 @@ class Annulus : CanvasWatchFaceService() {
             if (!mAmbient) {
                 canvas.save()
                 canvas.rotate(secondsRotation, 0f, 0f)
-                mHandStrokePaint.color = WATCH_HAND_COLOR
-                mHandStrokePaint.strokeWidth = SECOND_THICKNESS
+                mStrokePaint.color = WATCH_HAND_COLOR
+                mStrokePaint.strokeWidth = SECOND_THICKNESS
 
                 if (weatherData.currentWindSpeed != null) {
                     fun windSpeedToRatio(windSpeed: Double): Float =
@@ -994,12 +983,12 @@ class Annulus : CanvasWatchFaceService() {
                     val sweepDegrees = sweepAngle * 180f/PI.toFloat()
                     canvas.drawArc(RectF((-2*radius+displacement)*SECOND_LENGTH, -(0.5f+radius)*SECOND_LENGTH,
                         displacement*SECOND_LENGTH, -(0.5f-radius)*SECOND_LENGTH),
-                        -sweepDegrees/2f, sweepDegrees, false, mHandStrokePaint)
+                        -sweepDegrees/2f, sweepDegrees, false, mStrokePaint)
                 } else {
                     canvas.drawLine(
                         0f, 0f,
                         0f, -SECOND_LENGTH,
-                        mHandStrokePaint
+                        mStrokePaint
                     )
                 }
                 canvas.restore()
@@ -1043,9 +1032,9 @@ class Annulus : CanvasWatchFaceService() {
                 )
 
                 /* White border */
-                mHandStrokePaint.color = WATCH_HAND_COLOR
-                mHandStrokePaint.strokeWidth = MINUTE_BORDER_THICKNESS
-                canvas.drawPath(minuteHandPath, mHandStrokePaint)
+                mStrokePaint.color = WATCH_HAND_COLOR
+                mStrokePaint.strokeWidth = MINUTE_BORDER_THICKNESS
+                canvas.drawPath(minuteHandPath, mStrokePaint)
             }
 
             canvas.restore()
@@ -1071,7 +1060,8 @@ class Annulus : CanvasWatchFaceService() {
             for (i in 0 until displayNumber) {
                 val event = nextHourData[i]
                 mFillPaint.color = CALENDAR_COLORS[i]
-                mCalendarPaint.color = CALENDAR_COLORS[i]
+                mStrokePaint.strokeWidth = CALENDAR_THICKNESS
+                mStrokePaint.color = CALENDAR_COLORS[i]
 
                 /*
                  * Draw an arc showing when the calendar event is happening.
@@ -1093,7 +1083,7 @@ class Annulus : CanvasWatchFaceService() {
 
                 /* Angle measured from x axis rather than y axis, so subtract 90 degrees */
                 canvas.drawArc(RectF(-CALENDAR_RADIUS, -CALENDAR_RADIUS, CALENDAR_RADIUS, CALENDAR_RADIUS),
-                    startAngle-90, sweepAngle, false, mCalendarPaint)
+                    startAngle-90, sweepAngle, false, mStrokePaint)
 
                 /* Restore the canvas' original orientation. */
                 canvas.restore()
