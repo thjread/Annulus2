@@ -80,10 +80,6 @@ private val TEMPERATURE_COLOR = Color.rgb(211, 47, 47)
 private val TEMPERATURE_FILL_COLOR = Color.argb(100, 230, 81, 0)
 private val PRESSURE_COLOR = Color.rgb(0, 121, 107)
 private val PRESSURE_FILL_COLOR = Color.argb(100, 0, 151, 167)
-private val ZERO_DEGREES_COLOR = Color.rgb(127, 219, 255)
-private val FIVE_DEGREES_COLOR = Color.rgb(170, 170, 170)
-private const val ZERO_DEGREES_THICKNESS = 0.03f
-private const val FIVE_DEGREES_THICKNESS = 0.02f
 
 private const val CALENDAR_THICKNESS = 0.02f
 private const val CALENDAR_RADIUS = 7f/9f
@@ -254,7 +250,7 @@ class Annulus : CanvasWatchFaceService() {
                                      val currentWindSpeed: Double?, val tickParams: List<Pair<Float, Int>>?) {
         companion object {
             fun fromWeatherData(data: WeatherService.WeatherData?, now: Long, calendar: Calendar): WatchfaceWeatherData {
-                val tickParams = MutableList(60) { Pair(0f, FIVE_DEGREES_COLOR) }
+                val tickParams = MutableList(60) { Pair(0f, MINOR_TICK_COLOR) }
 
                 /* Only pass tickParams if there is sufficient rain in the next hour */
                 var showRain = false
@@ -294,7 +290,7 @@ class Annulus : CanvasWatchFaceService() {
                             0 -> 0f
                             else -> 1f
                         }
-                        val color = Annulus.interpolateColor(RAIN_COLOR, FIVE_DEGREES_COLOR, precipProbability.toFloat())
+                        val color = Annulus.interpolateColor(RAIN_COLOR, MINOR_TICK_COLOR, precipProbability.toFloat())
                         tickParams[minute] = Pair(length*lengthMultiplier, color)
                     }
                 }
@@ -1069,17 +1065,6 @@ class Annulus : CanvasWatchFaceService() {
                         MINUTE_THICKNESS, MINUTE_TIP_THICKNESS, minuteTemperatureLength, 0f),
                     mFillPaint
                 )
-
-                /* Ticks every 5 degrees, with a more obvious tick for 0 Celsius. */
-                for (temperature in -5..25 step 5){
-                    mHandStrokePaint.color = if (temperature == 0) ZERO_DEGREES_COLOR else FIVE_DEGREES_COLOR
-                    mHandStrokePaint.strokeWidth = if (temperature == 0) ZERO_DEGREES_THICKNESS else FIVE_DEGREES_THICKNESS
-                    val ratio = temperatureToRatio(temperature.toDouble())
-                    val width = (1-ratio)*MINUTE_THICKNESS + ratio*MINUTE_TIP_THICKNESS + MINUTE_BORDER_THICKNESS
-                    canvas.drawLine(-width/2f, -ratio*MINUTE_LENGTH,
-                        width/2f, -ratio*MINUTE_LENGTH,
-                        mHandStrokePaint)
-                }
 
                 /* White border */
                 mHandStrokePaint.color = WATCH_HAND_COLOR
