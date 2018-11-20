@@ -103,10 +103,10 @@ private const val ARC_EPSILON = 0.8f
 private const val MAX_RAIN = 8f
 private const val MIN_DISPLAY_PRECIP = 0.09f
 private const val MAX_STARS_CLOUD_COVER = 0.4f
-private const val STAR_BORDER_EPSILON = 0.006f
+private const val STAR_BORDER_EPSILON = 0.008f
 private const val MAX_STARS = 15
 
-private val RAIN_COLOR = Color.rgb(2, 136, 209)//Color.rgb(100, 181, 246)
+private val RAIN_COLOR = Color.rgb(2, 136, 209)
 private val CLEAR_COLOR = Color.rgb(255, 213, 79)
 private const val CLOUD_COLOR = Color.WHITE
 private val DARK_RAIN_COLOR = Color.rgb(13, 71, 161)
@@ -278,6 +278,9 @@ class Annulus : CanvasWatchFaceService() {
         private var mAmbient: Boolean = false
         private var mLowBitAmbient: Boolean = false
         private var mBurnInProtection: Boolean = false
+
+        /* Constrols whether to display calendar data or weather data */
+        private var mCalendarMode = false
 
         /* Handler to update the time once a second in interactive mode. */
         private val mUpdateTimeHandler = EngineHandler(this)
@@ -478,9 +481,10 @@ class Annulus : CanvasWatchFaceService() {
                 }
                 WatchFaceService.TAP_TYPE_TAP -> {
                     // The user has completed the tap gesture
+                    // TODO do we want manual refresh every time?
                     mCalendarDataSource?.updateCalendarData()
                     mWeatherDataSource?.updateWeatherData()
-                    // TODO add feedback?
+                    mCalendarMode = !mCalendarMode
                 }
             }
             invalidate()
@@ -490,16 +494,23 @@ class Annulus : CanvasWatchFaceService() {
 
             val now = System.currentTimeMillis()
 
+            val nextHourResponse = mCalendarDataSource?.nextHourCalendarData(now)
+            if (nextHourResponse?.visibilityChanged == true) {
+                mCalendarMode = nextHourResponse.nextHourCalendarData.isNotEmpty()
+            }
+
             canvas.drawRGB(Color.red(BACKGROUND_COLOR), Color.green(BACKGROUND_COLOR), Color.blue(BACKGROUND_COLOR))
 
             drawBackground(canvas)
 
-            mWeatherDataSource?.mWeatherData?.run{
-                drawWeather(canvas, now, this)
-            }
-            mCalendarDataSource?.run{
-                val nextHourCalendarData = nextHourCalendarData(now)
-                drawCalendar(canvas, now, nextHourCalendarData)
+            if (mCalendarMode) {
+                if (nextHourResponse != null) {
+                    drawCalendar(canvas, now, nextHourResponse.nextHourCalendarData)
+                }
+            } else {
+                mWeatherDataSource?.mWeatherData?.run{
+                    drawWeather(canvas, now, this)
+                }
             }
 
             val watchfaceWeatherData =
@@ -582,7 +593,6 @@ class Annulus : CanvasWatchFaceService() {
                 val cloudCover = datum.cloudCover?.toFloat() ?: 0.0f
 
                 val startAngle = hourAngle(begin)
-
                 val endAngle = hourAngle(end)
                 val sweepAngle = (endAngle + 360 - startAngle) % 360
 
@@ -1032,10 +1042,10 @@ class Annulus : CanvasWatchFaceService() {
                 canvas.translate(mCenterX, mCenterY)
                 canvas.scale(mRadius, mRadius, 0f, 0f)
 
-                val start = maxOf(event.begin, now)
+                val begin = maxOf(event.begin, now)
                 val end = minOf(event.end,
                     now + DateUtils.HOUR_IN_MILLIS - (CALENDAR_GAP_MINUTES*DateUtils.MINUTE_IN_MILLIS).toLong())
-                val startAngle = minuteAngle(start)
+                val startAngle = minuteAngle(begin)
                 val endAngle = minuteAngle(end)
 
                 val sweepAngle = (endAngle+360-startAngle) % 360

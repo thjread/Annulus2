@@ -34,6 +34,9 @@ class CalendarDataSource(private val contentResolver: ContentResolver) {
     var mLastUpdated: Long = 0
         private set
 
+    /** Keeps track of whether there are currently any events visible in the next hour */
+    private var mEventsVisible: Boolean = false
+
     /**
      * Weather and calendar data are each updated from an actor that
      * runs on the main (UI) thread, to prevent updating a source
@@ -55,10 +58,29 @@ class CalendarDataSource(private val contentResolver: ContentResolver) {
         }
     }
 
-    fun nextHourCalendarData(time: Long): List<CalendarData> {
-        return mCalendarData.filter {
+    data class NextHourResponse(val nextHourCalendarData: List<CalendarData>, val visibilityChanged: Boolean)
+
+    /**
+     * Returns events occuring in the next hour, and whether the presence of events in the next hour has changed since
+     * the last time this function was called.
+     */
+    // TODO modify this to change mode every time a *new* event moves into the next hour?
+    fun nextHourCalendarData(time: Long): NextHourResponse {
+        val results = mCalendarData.filter {
             it.overlapsWith(time, time+DateUtils.HOUR_IN_MILLIS)
         }
+        val visibilityChanged = when {
+            results.isEmpty() && mEventsVisible -> {
+                mEventsVisible = false
+                true
+            }
+            results.isNotEmpty() && !mEventsVisible -> {
+                mEventsVisible = true
+                true
+            }
+            else -> false
+        }
+        return NextHourResponse(results, visibilityChanged)
     }
 
     /**
