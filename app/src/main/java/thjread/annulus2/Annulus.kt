@@ -81,6 +81,8 @@ private val TEMPERATURE_FILL_COLOR = Color.argb(100, 230, 81, 0)
 private val PRESSURE_COLOR = Color.rgb(0, 121, 107)
 private val PRESSURE_FILL_COLOR = Color.argb(100, 0, 151, 167)
 
+private const val HOURLY_GRAPH_THICKNESS = 1f/9f
+
 private const val CALENDAR_THICKNESS = 0.02f
 private const val CALENDAR_RADIUS = 7f/9f
 private const val CALENDAR_TEXT_SIZE = 0.18f
@@ -312,7 +314,6 @@ class Annulus : CanvasWatchFaceService() {
         private var mChinSize: Float = 0F
 
         private lateinit var mFillPaint: Paint
-        private lateinit var mLightenPaint: Paint
         private lateinit var mHandStrokePaint: Paint
         private lateinit var mTickPaint: Paint
         private lateinit var mCalendarPaint: Paint
@@ -397,14 +398,6 @@ class Annulus : CanvasWatchFaceService() {
                 style = Paint.Style.FILL
             }
 
-            /* Set color before each use */
-            mLightenPaint = Paint().apply {
-                strokeWidth = 0f
-                isAntiAlias = true
-                style = Paint.Style.FILL
-                xfermode = PorterDuffXfermode(PorterDuff.Mode.LIGHTEN)
-            }
-
             /* Set color, strokeWidth before each use */
             mHandStrokePaint = Paint().apply {
                 isAntiAlias = true
@@ -435,13 +428,11 @@ class Annulus : CanvasWatchFaceService() {
 
             if (mAmbient && mLowBitAmbient) {
                 mFillPaint.isAntiAlias = false
-                mLightenPaint.isAntiAlias = false
                 mHandStrokePaint.isAntiAlias = false
                 mTickPaint.isAntiAlias = false
                 mCalendarPaint.isAntiAlias = false
             } else {
                 mFillPaint.isAntiAlias = true
-                mLightenPaint.isAntiAlias = true
                 mHandStrokePaint.isAntiAlias = true
                 mTickPaint.isAntiAlias = true
                 mCalendarPaint.isAntiAlias = true
@@ -687,6 +678,8 @@ class Annulus : CanvasWatchFaceService() {
 
                     /*
                      * Add temperature and pressure for the next 12 hours to lists.
+                     * Temperatures are placed in the middle of the hour and pressures at the beginning, solely for
+                     * aesthetic reasons.
                      */
                     val midTime = (begin+end)/2
                     if (midTime >= now && midTime < now + 12*DateUtils.HOUR_IN_MILLIS) {
@@ -695,8 +688,11 @@ class Annulus : CanvasWatchFaceService() {
                             temperatures.add(Pair(midpointAngle, temperatureToRatio(datum.temperature,
                                 rangeMax=1f/ MINUTE_LENGTH)))
                         }
+                    }
+                    if (begin >= now && begin < now + 12*DateUtils.HOUR_IN_MILLIS) {
+                        val beginAngle = hourAngle(begin)
                         if (datum.pressure != null) {
-                            pressures.add(Pair(midpointAngle, pressureToRatio(datum.pressure,
+                            pressures.add(Pair(beginAngle, pressureToRatio(datum.pressure,
                                 rangeMax=1f/HOUR_LENGTH)))
                         }
                     }
@@ -759,45 +755,25 @@ class Annulus : CanvasWatchFaceService() {
             canvas.scale(mRadius, mRadius, 0f, 0f)
 
             /*
-             * Draw a circular graph of pressure / temperature data.
+             * Draw a set of spikes representing hourly temperature / pressure data.
              */
             fun drawHourlyGraph(dataPoints: MutableList<Pair<Float, Float>>, maxLength: Float, color: Int) {
                 if (dataPoints.isNotEmpty()) {
-                    /* Avoid interpolating between first and last data points */
-                    val nowAngle = hourAngle(now)
-                    dataPoints.add(0, Pair(nowAngle, dataPoints[0].second))
-                    dataPoints.add(Pair(nowAngle, dataPoints[dataPoints.size-1].second))
+                    mFillPaint.color = color
 
-                    val path = Path()
-                    for (i in 0 until dataPoints.size) {
-                        val (angle, ratio) = dataPoints[i]
+                    for ((angle, ratio) in dataPoints) {
+                        canvas.rotate(angle)
 
-                        val xDir = sin(angle*PI.toFloat()/180)
-                        val yDir = -cos(angle*PI.toFloat()/180)
+                        val height = ratio*maxLength
+                        val path = Path()
+                        path.moveTo(-HOURLY_GRAPH_THICKNESS/2f, 0f)
+                        path.quadTo(-HOURLY_GRAPH_THICKNESS/2f, -height/2f, 0f, -height)
+                        path.quadTo(HOURLY_GRAPH_THICKNESS/2f, -height/2f, HOURLY_GRAPH_THICKNESS/2f, 0f)
+                        path.close()
+                        canvas.drawPath(path, mFillPaint)
 
-                        /* For points after the first, interpolate with a line curved as if the graph were a perfect
-                         * circle (i.e. constant pressure / temperature.
-                         */
-                        if (i == 0) {
-                            path.moveTo(xDir * maxLength * ratio, yDir * maxLength * ratio)
-                        } else {
-                            val (prevAngle, prevRatio) = dataPoints[i-1]
-                            val sweepAngle = (angle+360-prevAngle) % 360
-                            val controlLen = maxLength / cos((sweepAngle/2f)*PI.toFloat()/180)
-
-                            val midXDir = sin((angle-sweepAngle/2f)*PI.toFloat()/180)
-                            val midYDir = -cos((angle-sweepAngle/2f)*PI.toFloat()/180)
-
-                            val midRatio = (ratio+prevRatio)/2f
-
-                            path.quadTo(midXDir * controlLen * midRatio, midYDir * controlLen * midRatio,
-                                xDir * maxLength * ratio, yDir * maxLength * ratio)
-                        }
+                        canvas.rotate(-angle)
                     }
-                    path.close()
-
-                    mLightenPaint.color = color
-                    canvas.drawPath(path, mLightenPaint)
                 }
             }
 
