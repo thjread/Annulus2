@@ -215,7 +215,8 @@ class Annulus : CanvasWatchFaceService() {
 
                 /* Only pass tickParams if there is sufficient rain in the next hour */
                 var showRain = false
-                if (data?.minutely != null && data.minutely.data.size >= 40) {
+                var dataPoints = 0
+                if (data?.minutely != null) {
 
                     calendar.timeInMillis = now
                     val currentMinute = calendar.get(Calendar.MINUTE)
@@ -225,6 +226,8 @@ class Annulus : CanvasWatchFaceService() {
                         if (time <= now || time > now + DateUtils.HOUR_IN_MILLIS) {
                             continue
                         }
+
+                        dataPoints += 1
 
                         calendar.timeInMillis = time
                         val minute = calendar.get(Calendar.MINUTE)
@@ -254,7 +257,7 @@ class Annulus : CanvasWatchFaceService() {
                 }
 
                 return WatchfaceWeatherData(data?.currently?.temperature, data?.currently?.pressure,
-                    data?.currently?.windSpeed, if (showRain) { tickParams } else { null })
+                    data?.currently?.windSpeed, if (showRain && dataPoints >= 40) { tickParams } else { null })
             }
         }
     }
