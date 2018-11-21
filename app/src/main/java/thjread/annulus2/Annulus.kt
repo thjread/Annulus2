@@ -650,8 +650,7 @@ class Annulus : CanvasWatchFaceService() {
                 val cloudCover = datum.cloudCover?.toFloat() ?: 0.0f
 
                 val startAngle = hourAngle(begin)
-                val endAngle = hourAngle(end)
-                val sweepAngle = (endAngle + 360 - startAngle) % 360
+                val sweepAngle = (end-begin)/(2f*DateUtils.MINUTE_IN_MILLIS)
 
                 return WeatherRingSegment(startAngle, sweepAngle, precipExpectation, cloudCover, day)
             }
@@ -1072,16 +1071,15 @@ class Annulus : CanvasWatchFaceService() {
                 val end = minOf(event.end,
                     now + DateUtils.HOUR_IN_MILLIS - (CALENDAR_GAP_MINUTES*DateUtils.MINUTE_IN_MILLIS).toLong())
                 if (end <= begin) continue
-                val startAngle = minuteAngle(begin)
-                val endAngle = minuteAngle(end)
 
-                val sweepAngle = (endAngle+360-startAngle) % 360
+                val startAngle = minuteAngle(begin)
+                val sweepAngle = (end-begin)/(10f*DateUtils.SECOND_IN_MILLIS)
 
                 /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
                 canvas.save()
                 canvas.translate(mCenterX, mCenterY)
                 canvas.scale(mRadius, mRadius, 0f, 0f)
-                
+
                 /* Angle measured from x axis rather than y axis, so subtract 90 degrees */
                 canvas.drawArc(RectF(-CALENDAR_RADIUS, -CALENDAR_RADIUS, CALENDAR_RADIUS, CALENDAR_RADIUS),
                     startAngle-90, sweepAngle, false, mStrokePaint)
