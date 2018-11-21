@@ -43,7 +43,7 @@ private const val MSG_UPDATE_TIME = 0
  * Colors and dimensions for the watchface.
  */
 private const val BACKGROUND_COLOR = Color.BLACK
-private val BACKGROUND_COLOR_LIGHT = Color.rgb(22, 22, 22)
+private val BACKGROUND_COLOR_LIGHT = Color.rgb(25, 25, 25)
 
 private const val MAJOR_TICK_THICKNESS = 0.05f
 private const val MINOR_TICK_THICKNESS = 0.01f
@@ -77,9 +77,9 @@ private const val INNER_CIRCLE_RADIUS = CENTER_CIRCLE_RADIUS - MINUTE_BORDER_THI
 
 private val GAUGE_BACKGROUND_COLOR = Color.rgb(50, 50, 50)
 private val TEMPERATURE_COLOR = Color.rgb(211, 47, 47)
-private val TEMPERATURE_FILL_COLOR = Color.argb(100, 230, 81, 0)
+private val TEMPERATURE_FILL_COLOR = Color.argb(95, 230, 81, 0)
 private val PRESSURE_COLOR = Color.rgb(0, 121, 107)
-private val PRESSURE_FILL_COLOR = Color.argb(100, 0, 151, 167)
+private val PRESSURE_FILL_COLOR = Color.argb(95, 0, 151, 167)
 
 private const val HOURLY_GRAPH_THICKNESS = 1f/9f
 
@@ -1068,19 +1068,20 @@ class Annulus : CanvasWatchFaceService() {
                  */
                 // TODO what about when events overlap
 
-                /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
-                canvas.save()
-                canvas.translate(mCenterX, mCenterY)
-                canvas.scale(mRadius, mRadius, 0f, 0f)
-
                 val begin = maxOf(event.begin, now)
                 val end = minOf(event.end,
                     now + DateUtils.HOUR_IN_MILLIS - (CALENDAR_GAP_MINUTES*DateUtils.MINUTE_IN_MILLIS).toLong())
+                if (end <= begin) continue
                 val startAngle = minuteAngle(begin)
                 val endAngle = minuteAngle(end)
 
                 val sweepAngle = (endAngle+360-startAngle) % 360
 
+                /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
+                canvas.save()
+                canvas.translate(mCenterX, mCenterY)
+                canvas.scale(mRadius, mRadius, 0f, 0f)
+                
                 /* Angle measured from x axis rather than y axis, so subtract 90 degrees */
                 canvas.drawArc(RectF(-CALENDAR_RADIUS, -CALENDAR_RADIUS, CALENDAR_RADIUS, CALENDAR_RADIUS),
                     startAngle-90, sweepAngle, false, mStrokePaint)
