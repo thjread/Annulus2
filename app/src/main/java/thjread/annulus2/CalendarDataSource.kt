@@ -9,7 +9,7 @@ import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
 
-private const val CALENDAR_UPDATE_FREQUENCY: Long = 10*DateUtils.MINUTE_IN_MILLIS
+private const val CALENDAR_UPDATE_FREQUENCY: Long = 5*DateUtils.MINUTE_IN_MILLIS
 
 data class CalendarData (val title: String, val begin: Long, val end: Long) {
     inline fun endsAfter(time: Long): Boolean {

@@ -86,7 +86,7 @@ private const val HOURLY_GRAPH_THICKNESS = 1f/9f
 private const val CALENDAR_THICKNESS = 0.02f
 private const val CALENDAR_RADIUS = 7f/9f
 private const val CALENDAR_TEXT_SIZE = 0.18f
-private val CALENDAR_TEXT_HEIGHTS = listOf(4f/9f, 2f/9f)
+private val CALENDAR_TEXT_HEIGHTS = listOf(5f/9f, 3f/9f)
 
 private val CALENDAR_COLORS = listOf(
     Color.rgb(33, 150, 243),
