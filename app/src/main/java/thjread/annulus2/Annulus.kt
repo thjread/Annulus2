@@ -242,6 +242,31 @@ class Annulus : CanvasWatchFaceService() {
             val b = (Color.blue(first)*ratio + Color.blue(second)*(1f-ratio)).toInt()
             return Color.rgb(r, g, b)
         }
+
+        /**
+         * Calculate angle of the watch hands in degrees.
+         */
+        private fun secondAngle(timeInMillis: Long, calendar: Calendar): Float {
+            calendar.timeInMillis = timeInMillis
+            val seconds = calendar.get(Calendar.SECOND)
+            return seconds*6f
+        }
+        private fun minuteAngle(timeInMillis: Long, calendar: Calendar, secondAccuracy: Boolean): Float {
+            calendar.timeInMillis = timeInMillis
+            val seconds = calendar.get(Calendar.SECOND)
+            val minutes = calendar.get(Calendar.MINUTE)
+            val offset = seconds / 10f
+            /* Face only updates once per minute in ambient mode, so want minute hand at a whole number of minutes. */
+            return (minutes * 6f) +
+                    if (secondAccuracy) offset else 0f
+        }
+        private fun hourAngle(timeInMillis: Long, calendar: Calendar): Float {
+            calendar.timeInMillis = timeInMillis
+            val minutes = calendar.get(Calendar.MINUTE)
+            val hours = calendar.get(Calendar.HOUR)
+            val offset = minutes / 2f
+            return hours * 30f + offset
+        }
     }
 
     /**
@@ -251,6 +276,7 @@ class Annulus : CanvasWatchFaceService() {
     data class WatchfaceWeatherData (val currentTemperature: Double?, val currentPressure: Double?,
                                      val currentWindSpeed: Double?, val tickParams: List<Pair<Float, Int>>?) {
         companion object {
+
             fun fromWeatherData(data: WeatherService.WeatherData?, now: Long, calendar: Calendar): WatchfaceWeatherData {
                 val tickParams = MutableList(60) { Pair(0f, MINOR_TICK_COLOR) }
 
@@ -299,6 +325,56 @@ class Annulus : CanvasWatchFaceService() {
 
                 return WatchfaceWeatherData(data?.currently?.temperature, data?.currently?.pressure,
                     data?.currently?.windSpeed, if (showRain && dataPoints >= 40) { tickParams } else { null })
+            }
+        }
+    }
+
+    data class CalendarArcSegment(val startAngle: Float, val sweepAngle: Float, val color: Int)
+    data class CalendarText(val title: String, val y: Float, val color: Int)
+    data class CalendarRenderData(val calendarArcSegments: List<CalendarArcSegment>, val calendarTexts: List<CalendarText>) {
+
+        companion object {
+
+            fun fromCalendarData(now: Long, nextHourData: List<CalendarData>, calendar: Calendar): CalendarRenderData {
+
+                val displayNumber = minOf(nextHourData.size, CALENDAR_COLORS.size)
+
+                val segments: MutableList<CalendarArcSegment> = mutableListOf()
+                val texts: MutableList<CalendarText> = mutableListOf()
+
+                for (i in 0 until displayNumber) {
+                    val event = nextHourData[i]
+                    val color = CALENDAR_COLORS[i]
+
+                    /*
+                     * Make an arc showing when the calendar event is happening.
+                     */
+                    // TODO what about when events overlap
+
+                    val begin = maxOf(event.begin, now)
+                    val end = minOf(event.end,
+                        now + DateUtils.HOUR_IN_MILLIS - (CALENDAR_GAP_MINUTES*DateUtils.MINUTE_IN_MILLIS).toLong())
+                    if (end <= begin) continue
+
+                    val startAngle = minuteAngle(begin, calendar, true)
+                    val sweepAngle = (end-begin)/(10f*DateUtils.SECOND_IN_MILLIS)
+
+                    segments.add(CalendarArcSegment(startAngle, sweepAngle, color))
+
+                    /*
+                     * Display the title of the event.
+                     */
+                    if (i < CALENDAR_TEXT_HEIGHTS.size) {
+                        /*
+                         * Heights are listed from bottom to top. Prefer text being placed as far down as possible,
+                         * but events should be listed top to bottom.
+                         */
+                        val y = CALENDAR_TEXT_HEIGHTS[minOf(displayNumber, CALENDAR_TEXT_HEIGHTS.size)-1-i]
+                        texts.add(CalendarText(event.title, y, color))
+                    }
+                }
+
+                return CalendarRenderData(segments, texts)
             }
         }
     }
@@ -525,9 +601,12 @@ class Annulus : CanvasWatchFaceService() {
 
             drawBackground(canvas, now)
 
+            val calendarRenderData = nextHourResponse?.nextHourCalendarData?.let {
+                CalendarRenderData.fromCalendarData(now, it, mCalendar)
+            }
             if (mCalendarMode) {
-                if (nextHourResponse != null) {
-                    drawCalendar(canvas, now, nextHourResponse.nextHourCalendarData)
+                if (calendarRenderData != null) {
+                    drawCalendarArcSegments(canvas, calendarRenderData.calendarArcSegments)
                 }
             } else {
                 mWeatherDataSource?.mWeatherData?.run{
@@ -538,6 +617,10 @@ class Annulus : CanvasWatchFaceService() {
             val watchfaceWeatherData =
                 WatchfaceWeatherData.fromWeatherData(mWeatherDataSource?.mWeatherData, now, mCalendar)
             drawWatchFace(canvas, now, watchfaceWeatherData)
+
+            if (mCalendarMode && calendarRenderData != null) {
+                drawCalendarTexts(canvas, calendarRenderData.calendarTexts)
+            }
 
             mWeatherDataSource?.run{ updateWeatherDataIfStale() }
 
@@ -649,7 +732,7 @@ class Annulus : CanvasWatchFaceService() {
 
                 val cloudCover = datum.cloudCover?.toFloat() ?: 0.0f
 
-                val startAngle = hourAngle(begin)
+                val startAngle = hourAngle(begin, mCalendar)
                 val sweepAngle = (end-begin)/(2f*DateUtils.MINUTE_IN_MILLIS)
 
                 return WeatherRingSegment(startAngle, sweepAngle, precipExpectation, cloudCover, day)
@@ -671,14 +754,14 @@ class Annulus : CanvasWatchFaceService() {
                      */
                     val midTime = (begin+end)/2
                     if (midTime >= now && midTime < now + 12*DateUtils.HOUR_IN_MILLIS) {
-                        val midpointAngle = hourAngle(midTime)
+                        val midpointAngle = hourAngle(midTime, mCalendar)
                         if (datum.temperature != null) {
                             temperatures.add(Pair(midpointAngle, temperatureToRatio(datum.temperature,
                                 rangeMax=1f/ MINUTE_LENGTH)))
                         }
                     }
                     if (begin >= now && begin < now + 12*DateUtils.HOUR_IN_MILLIS) {
-                        val beginAngle = hourAngle(begin)
+                        val beginAngle = hourAngle(begin, mCalendar)
                         if (datum.pressure != null) {
                             pressures.add(Pair(beginAngle, pressureToRatio(datum.pressure,
                                 rangeMax=1f/HOUR_LENGTH)))
@@ -836,31 +919,6 @@ class Annulus : CanvasWatchFaceService() {
             canvas.restore()
         }
 
-        /**
-         * Calculate angle of the watch hands in degrees.
-         */
-        private fun secondAngle(timeInMillis: Long): Float {
-            mCalendar.timeInMillis = timeInMillis
-            val seconds = mCalendar.get(Calendar.SECOND)
-            return seconds*6f
-        }
-        private fun minuteAngle(timeInMillis: Long): Float {
-            mCalendar.timeInMillis = timeInMillis
-            val seconds = mCalendar.get(Calendar.SECOND)
-            val minutes = mCalendar.get(Calendar.MINUTE)
-            val offset = seconds / 10f
-            /* Face only updates once per minute in ambient mode, so want minute hand at a whole number of minutes. */
-            return (minutes * 6f) +
-                    if (mAmbient) 0f else offset
-        }
-        private fun hourAngle(timeInMillis: Long): Float {
-            mCalendar.timeInMillis = timeInMillis
-            val minutes = mCalendar.get(Calendar.MINUTE)
-            val hours = mCalendar.get(Calendar.HOUR)
-            val offset = minutes / 2f
-            return hours * 30f + offset
-        }
-
         private fun drawWatchFace(canvas: Canvas, now: Long, weatherData: WatchfaceWeatherData) {
 
             /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
@@ -923,9 +981,9 @@ class Annulus : CanvasWatchFaceService() {
             /*
              * Calculate hand rotations.
              */
-            val secondsRotation = secondAngle(now)
-            val minutesRotation = minuteAngle(now)
-            val hoursRotation = hourAngle(now)
+            val secondsRotation = secondAngle(now, mCalendar)
+            val minutesRotation = minuteAngle(now, mCalendar, !mAmbient)
+            val hoursRotation = hourAngle(now, mCalendar)
 
             /*
              * Draw hour hand, with a barometer-style green bar showing the current pressure.
@@ -1052,57 +1110,45 @@ class Annulus : CanvasWatchFaceService() {
         }
 
         /**
-         * Show names and durations of calendar events in the next hour.
+         * Show durations of calendar events in the next hour.
          */
-        private fun drawCalendar(canvas: Canvas, now: Long, nextHourData: List<CalendarData>) {
-            val displayNumber = minOf(nextHourData.size, CALENDAR_COLORS.size)
-            for (i in 0 until displayNumber) {
-                val event = nextHourData[i]
-                mFillPaint.color = CALENDAR_COLORS[i]
+        private fun drawCalendarArcSegments(canvas: Canvas, calendarArcSegments: List<CalendarArcSegment>) {
+
+            /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
+            canvas.save()
+            canvas.translate(mCenterX, mCenterY)
+            canvas.scale(mRadius, mRadius, 0f, 0f)
+
+            for (segment in calendarArcSegments) {
                 mStrokePaint.strokeWidth = CALENDAR_THICKNESS
-                mStrokePaint.color = CALENDAR_COLORS[i]
-
-                /*
-                 * Draw an arc showing when the calendar event is happening.
-                 */
-                // TODO what about when events overlap
-
-                val begin = maxOf(event.begin, now)
-                val end = minOf(event.end,
-                    now + DateUtils.HOUR_IN_MILLIS - (CALENDAR_GAP_MINUTES*DateUtils.MINUTE_IN_MILLIS).toLong())
-                if (end <= begin) continue
-
-                val startAngle = minuteAngle(begin)
-                val sweepAngle = (end-begin)/(10f*DateUtils.SECOND_IN_MILLIS)
-
-                /* Translate and scale canvas so that centre is 0, 0 and radius is 1. */
-                canvas.save()
-                canvas.translate(mCenterX, mCenterY)
-                canvas.scale(mRadius, mRadius, 0f, 0f)
+                mStrokePaint.color = segment.color
 
                 /* Angle measured from x axis rather than y axis, so subtract 90 degrees */
-                canvas.drawArc(RectF(-CALENDAR_RADIUS, -CALENDAR_RADIUS, CALENDAR_RADIUS, CALENDAR_RADIUS),
-                    startAngle-90, sweepAngle, false, mStrokePaint)
+                canvas.drawArc(
+                    RectF(-CALENDAR_RADIUS, -CALENDAR_RADIUS, CALENDAR_RADIUS, CALENDAR_RADIUS),
+                    segment.startAngle - 90, segment.sweepAngle, false, mStrokePaint
+                )
 
-                /* Restore the canvas' original orientation. */
-                canvas.restore()
+            }
 
-                /*
-                 * Display the title of the event.
-                 */
-                if (i < CALENDAR_TEXT_HEIGHTS.size) {
-                    /*
-                     * Heights are listed from bottom to top. Prefer text being placed as far down as possible,
-                     * but events should be listed top to bottom.
-                     */
-                    val height = CALENDAR_TEXT_HEIGHTS[minOf(displayNumber, CALENDAR_TEXT_HEIGHTS.size)-1-i]*mRadius
-                    val width = mFillPaint.measureText(event.title)
-                    canvas.drawText(event.title,
-                        mCenterX-width/2f,
-                        mCenterY+height,
-                        mFillPaint
-                    )
-                }
+            /* Restore the canvas' original orientation. */
+            canvas.restore()
+        }
+
+        /**
+         * Show durations of calendar events in the next hour.
+         */
+        private fun drawCalendarTexts(canvas: Canvas, calendarTexts: List<CalendarText>) {
+
+            for (text in calendarTexts) {
+                mFillPaint.color = text.color
+                val width = mFillPaint.measureText(text.title)
+                canvas.drawText(
+                    text.title,
+                    mCenterX - width / 2f,
+                    mCenterY + text.y*mRadius,
+                    mFillPaint
+                )
             }
         }
 
