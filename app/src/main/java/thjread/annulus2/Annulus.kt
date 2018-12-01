@@ -105,9 +105,11 @@ private const val STAR_BORDER_EPSILON = 0.008f
 private const val MAX_STARS = 15
 
 private val RAIN_COLOR = Color.rgb(2, 136, 209)
+private val SNOW_COLOR = Color.rgb(171, 71, 188)
 private val CLEAR_COLOR = Color.rgb(255, 213, 79)
 private const val CLOUD_COLOR = Color.WHITE
 private val DARK_RAIN_COLOR = Color.rgb(13, 71, 161)
+private val DARK_SNOW_COLOR = Color.rgb(106, 27, 154)
 private val DARK_CLEAR_COLOR = Color.rgb(40, 40, 40)
 private val DARK_CLOUD_COLOR = Color.rgb(130, 130, 130)
 private val STAR_COLOR = CLEAR_COLOR
@@ -318,7 +320,10 @@ class Annulus : CanvasWatchFaceService() {
                             0 -> 0f
                             else -> 1f
                         }
-                        val color = Annulus.interpolateColor(RAIN_COLOR, MINOR_TICK_COLOR, precipProbability.toFloat())
+                        val isSnow = datum.precipType?.equals("snow") ?: false
+                        val color = Annulus.interpolateColor(if (isSnow) { SNOW_COLOR } else { RAIN_COLOR },
+                            MINOR_TICK_COLOR,
+                            precipProbability.toFloat())
                         tickParams[minute] = Pair(length*lengthMultiplier, color)
                     }
                 }
@@ -721,7 +726,7 @@ class Annulus : CanvasWatchFaceService() {
             }
 
             data class WeatherRingSegment (val startAngle: Float, val sweepAngle: Float, val precipExpectation: Float,
-                                           val cloudCover: Float, val day: Boolean)
+                                           val snow: Boolean, val cloudCover: Float, val day: Boolean)
 
             fun createWeatherRingSegment(begin: Long, end: Long, datum: WeatherService.Datum, day: Boolean): WeatherRingSegment {
                 val precipExpectation = if (datum.precipProbability != null && datum.precipIntensity != null) {
@@ -735,7 +740,9 @@ class Annulus : CanvasWatchFaceService() {
                 val startAngle = hourAngle(begin, mCalendar)
                 val sweepAngle = (end-begin)/(2f*DateUtils.MINUTE_IN_MILLIS)
 
-                return WeatherRingSegment(startAngle, sweepAngle, precipExpectation, cloudCover, day)
+                val snow = datum.precipType?.equals("snow") ?: false
+
+                return WeatherRingSegment(startAngle, sweepAngle, precipExpectation, snow, cloudCover, day)
             }
 
             val segments: MutableList<WeatherRingSegment> = mutableListOf()
@@ -757,7 +764,7 @@ class Annulus : CanvasWatchFaceService() {
                         val midpointAngle = hourAngle(midTime, mCalendar)
                         if (datum.temperature != null) {
                             temperatures.add(Pair(midpointAngle, temperatureToRatio(datum.temperature,
-                                rangeMax=1f/ MINUTE_LENGTH)))
+                                rangeMax=1f/MINUTE_LENGTH)))
                         }
                     }
                     if (begin >= now && begin < now + 12*DateUtils.HOUR_IN_MILLIS) {
@@ -861,7 +868,19 @@ class Annulus : CanvasWatchFaceService() {
                 if (segment.precipExpectation >= MIN_DISPLAY_PRECIP) {
                     thickness = WEATHER_RING_THICKNESS +
                             (WEATHER_RING_MAX_THICKNESS-WEATHER_RING_THICKNESS) * segment.precipExpectation / MAX_RAIN
-                    color = if (segment.day) { RAIN_COLOR } else { DARK_RAIN_COLOR }
+                    color = if (segment.day) {
+                            if (segment.snow) {
+                            SNOW_COLOR
+                        } else {
+                            RAIN_COLOR
+                        }
+                    } else {
+                        if (segment.snow) {
+                            DARK_SNOW_COLOR
+                        } else {
+                            DARK_RAIN_COLOR
+                        }
+                    }
                 } else {
                     color = if (segment.day) {
                         interpolateColor(CLOUD_COLOR, CLEAR_COLOR, segment.cloudCover)
