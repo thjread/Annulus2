@@ -865,7 +865,8 @@ class Annulus : CanvasWatchFaceService() {
                 var thickness = WEATHER_RING_THICKNESS
                 var color: Int
 
-                if (segment.precipExpectation >= MIN_DISPLAY_PRECIP) {
+                val precipitation = segment.precipExpectation >= MIN_DISPLAY_PRECIP
+                if (precipitation) {
                     thickness = WEATHER_RING_THICKNESS +
                             (WEATHER_RING_MAX_THICKNESS-WEATHER_RING_THICKNESS) * segment.precipExpectation / MAX_RAIN
                     color = if (segment.day) {
@@ -890,9 +891,11 @@ class Annulus : CanvasWatchFaceService() {
                 }
 
                 /*
-                 * Draw gold stars if the cloud cover at night is less than MAX_STARS_CLOUD_COVER.
+                 * Draw gold stars if the cloud cover at night is less than MAX_STARS_CLOUD_COVER (as long as it's
+                 * not raining).
                  */
-                val stars: List<Pair<Float, Float>>? = if (!segment.day && segment.cloudCover < MAX_STARS_CLOUD_COVER) {
+                val stars: List<Pair<Float, Float>>? = if (!segment.day && !precipitation &&
+                    segment.cloudCover < MAX_STARS_CLOUD_COVER) {
                     val stars: MutableList<Pair<Float, Float>> = mutableListOf()
                     val numStars = ceil((1f - segment.cloudCover/MAX_STARS_CLOUD_COVER) * MAX_STARS).toInt()
 
