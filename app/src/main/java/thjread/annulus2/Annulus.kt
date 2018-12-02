@@ -85,6 +85,7 @@ private const val HOURLY_GRAPH_THICKNESS = 1f/9f
 
 private const val CALENDAR_THICKNESS = 0.02f
 private const val CALENDAR_RADIUS = 7f/9f
+private const val CALENDAR_TEXT_WIDTH_FRACTION = 0.9f
 private const val CALENDAR_TEXT_SIZE = 0.18f
 private val CALENDAR_TEXT_HEIGHTS = listOf(5f/9f, 3f/9f)
 
@@ -471,7 +472,7 @@ class Annulus : CanvasWatchFaceService() {
         }
 
         private fun initializeWatchFace() {
-            /* Set color before each use */
+            /* Set color (and textSize if relevant) before each use */
             mFillPaint = Paint().apply {
                 strokeWidth = 0f
                 isAntiAlias = true
@@ -558,8 +559,6 @@ class Annulus : CanvasWatchFaceService() {
             mCenterX = width / 2f
             mCenterY = height / 2f
             mRadius = Math.min(mCenterX, mCenterY)
-
-            mFillPaint.textSize = CALENDAR_TEXT_SIZE*mRadius
         }
 
         override fun onApplyWindowInsets(insets: WindowInsets?) {
@@ -1161,10 +1160,18 @@ class Annulus : CanvasWatchFaceService() {
          * Show durations of calendar events in the next hour.
          */
         private fun drawCalendarTexts(canvas: Canvas, calendarTexts: List<CalendarText>) {
-
             for (text in calendarTexts) {
+                val maxWidth = 2 * mRadius*sqrt(1-text.y*text.y) * CALENDAR_TEXT_WIDTH_FRACTION
+                val maxTextSize = CALENDAR_TEXT_SIZE * mRadius
+
                 mFillPaint.color = text.color
-                val width = mFillPaint.measureText(text.title)
+
+                mFillPaint.textSize = maxTextSize
+                var width = mFillPaint.measureText(text.title)
+                if (width > maxWidth) {
+                    mFillPaint.textSize = maxTextSize * (maxWidth/width)
+                    width = mFillPaint.measureText(text.title)
+                }
                 canvas.drawText(
                     text.title,
                     mCenterX - width / 2f,
