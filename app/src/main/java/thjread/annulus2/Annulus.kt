@@ -95,7 +95,7 @@ private val CALENDAR_COLORS = listOf(
 private const val CALENDAR_GAP_MINUTES = 1.5
 
 private const val WEATHER_RING_THICKNESS = 0.04f
-private const val WEATHER_RING_MAX_THICKNESS = 3f/9f
+private const val WEATHER_RING_MAX_THICKNESS = 5f/9f
 private const val WEATHER_RING_RADIUS = 4f/9f
 private const val ARC_EPSILON = 0.8f
 private const val MAX_RAIN = 8f
