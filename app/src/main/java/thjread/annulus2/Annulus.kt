@@ -657,16 +657,19 @@ class Annulus : CanvasWatchFaceService() {
             canvas.scale(mRadius, mRadius, 0f, 0f)
 
             if (mCalendarMode) {
-                mFillPaint.color = BACKGROUND_COLOR_LIGHT
-                for (i in 0 until 12 step 2) {
-                    canvas.drawArc(RectF(-1f, -1f, 1f, 1f), i*30f, 30f, true, mFillPaint)
+                if (!mAmbient) {
+                    mFillPaint.color = BACKGROUND_COLOR_LIGHT
+                    for (i in 0 until 12 step 2) {
+                        canvas.drawArc(RectF(-1f, -1f, 1f, 1f), i * 30f, 30f, true, mFillPaint)
+                    }
                 }
 
                 for (i in 8 downTo 0) {
                     /* Longitude is measured anticlockwise, angle is clockwise. */
                     val angle = -planetLongitude(now, i).toFloat()
                     canvas.rotate(angle)
-                    mFillPaint.color = PLANET_COLORS[i]
+                    val paint = if (mAmbient) mStrokePaint else mFillPaint;
+                    paint.color = PLANET_COLORS[i]
                     /* Draw ellipse with foci at centre and (i+1)/9. */
                     val semiMinorAxis = PLANET_ELLIPSE_THICKNESS/2f
                     val centreToFocus = ((i+1)/9f)/2f
@@ -676,15 +679,17 @@ class Annulus : CanvasWatchFaceService() {
                             -semiMinorAxis, -(centreToFocus+semiMajorAxis),
                             semiMinorAxis, -(centreToFocus-semiMajorAxis)
                         ),
-                        mFillPaint
+                        paint
                     )
                     canvas.rotate(-angle)
                 }
             } else {
-                mFillPaint.color = BACKGROUND_COLOR_LIGHT
-                for (i in 0 until 9 step 2) {
-                    val annulusPath = annulusPath(i*1f/9f, (i+1)*1f/9f)
-                    canvas.drawPath(annulusPath, mFillPaint)
+                if (!mAmbient) {
+                    mFillPaint.color = BACKGROUND_COLOR_LIGHT
+                    for (i in 0 until 9 step 2) {
+                        val annulusPath = annulusPath(i * 1f / 9f, (i + 1) * 1f / 9f)
+                        canvas.drawPath(annulusPath, mFillPaint)
+                    }
                 }
             }
 
