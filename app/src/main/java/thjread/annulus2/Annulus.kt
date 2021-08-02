@@ -346,7 +346,7 @@ class Annulus : CanvasWatchFaceService() {
                 val displayNumber = minOf(nextHourData.size, CALENDAR_COLORS.size)
 
                 val segments: MutableList<CalendarArcSegment> = mutableListOf()
-                val texts: MutableList<CalendarText> = mutableListOf()
+                val texts: MutableList<CalendarText> = mutableListOf ()
 
                 for (i in 0 until displayNumber) {
                     val event = nextHourData[i]
@@ -668,7 +668,7 @@ class Annulus : CanvasWatchFaceService() {
                     /* Longitude is measured anticlockwise, angle is clockwise. */
                     val angle = -planetLongitude(now, i).toFloat()
                     canvas.rotate(angle)
-                    val paint = if (mAmbient) mStrokePaint else mFillPaint;
+                    val paint = if (mAmbient && mBurnInProtection) mStrokePaint else mFillPaint;
                     paint.color = PLANET_COLORS[i]
                     /* Draw ellipse with foci at centre and (i+1)/9. */
                     val semiMinorAxis = PLANET_ELLIPSE_THICKNESS/2f
@@ -681,6 +681,14 @@ class Annulus : CanvasWatchFaceService() {
                         ),
                         paint
                     )
+                    /*val paint = mStrokePaint;
+                    paint.color = PLANET_COLORS[i]
+                    val radius = (i+1)/10f
+                    canvas.drawArc(
+                        RectF(
+                            -radius, -radius, radius, radius
+                        ), -15f, 30f, false, paint
+                    )*/
                     canvas.rotate(-angle)
                 }
             } else {
@@ -975,14 +983,25 @@ class Annulus : CanvasWatchFaceService() {
                 }
 
                 if (tickLength > 0) { /* Otherwise draws a dot even at length 0 */
-                    val innerX = sin(tickRot).toFloat() * (outerTickRadius - tickLength)
-                    val innerY = (-Math.cos(tickRot)).toFloat() * (outerTickRadius - tickLength)
-                    val outerX = sin(tickRot).toFloat() * outerTickRadius
-                    val outerY = (-Math.cos(tickRot)).toFloat() * outerTickRadius
+                    val x = sin(tickRot).toFloat()
+                    val y = -cos(tickRot).toFloat()
+                    val innerX = x * (outerTickRadius - tickLength)
+                    val innerY = y * (outerTickRadius - tickLength)
+                    val outerX = x * outerTickRadius
+                    val outerY = y * outerTickRadius
                     canvas.drawLine(
                         innerX, innerY,
                         outerX, outerY, mRoundStrokePaint
                     )
+                    if (mAmbient && mBurnInProtection && tickIndex % 5 == 0) {
+                        mRoundStrokePaint.color = BACKGROUND_COLOR
+                        mRoundStrokePaint.strokeWidth -= 2*MINOR_TICK_THICKNESS
+                        canvas.drawLine(
+                            innerX + x * MINOR_TICK_THICKNESS, innerY + y * MINOR_TICK_THICKNESS,
+                            outerX - x * MINOR_TICK_THICKNESS, outerY - y* MINOR_TICK_THICKNESS,
+                            mRoundStrokePaint
+                        )
+                    }
                 }
             }
 
